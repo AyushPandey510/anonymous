@@ -1,0 +1,64 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.atom/
+.history/
+.svn/
+.swiftpm/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+*.jks
+*.keystore
+
+# Flutter / Dart
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+android/.gradle/
+android/local.properties
+android/app/debug
+android/app/profile
+android/app/release
+ios/Pods/
+ios/.symlinks/
+macos/Build/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Generated / local
+migrate_working_dir/
