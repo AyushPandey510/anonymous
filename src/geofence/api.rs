@@ -9,7 +9,7 @@ use crate::{
     error::{ApiError, ApiResult},
 };
 use axum::{extract::State, routing::post, Json, Router};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use std::sync::Arc;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -76,6 +76,9 @@ pub async fn validate_location(
     )
     .await?;
 
+    // Update session lifecycle based on validation result
+    update_session_from_validation(&state.pool, user_id, payload.space_id, decision, lifecycle_state).await?;
+
     Ok(Json(ValidateLocationResponse {
         decision: decision.to_string(),
         lifecycle_state: lifecycle_state.to_string(),
@@ -87,6 +90,58 @@ pub async fn validate_location(
         consecutive_outside: validation.consecutive_outside,
         can_participate: validation.can_participate(),
     }))
+}
+
+async fn update_session_from_validation(
+    pool: &sqlx::PgPool,
+    user_id: uuid::Uuid,
+    space_id: uuid::Uuid,
+    decision: &str,
+    lifecycle_state: &str,
+) -> Result<(), sqlx::Error> {
+    match decision {
+        "outside" | "rejected" => {
+            let grace_until = Utc::now() + Duration::seconds(120);
+            sqlx::query(
+                r#"
+                UPDATE activity.sessions
+                SET status = 'grace',
+                    expires_at = $4,
+                    lifecycle_state = $3,
+                    last_validated_at = now(),
+                    consecutive_outside = consecutive_outside + 1
+                WHERE user_id = $1 AND space_id = $2 AND status = 'active'
+                "#,
+            )
+            .bind(user_id)
+            .bind(space_id)
+            .bind(lifecycle_state)
+            .bind(grace_until)
+            .execute(pool)
+            .await?;
+        }
+        "inside" | "near_boundary" => {
+            sqlx::query(
+                r#"
+                UPDATE activity.sessions
+                SET status = 'active',
+                    expires_at = $4,
+                    lifecycle_state = $3,
+                    last_validated_at = now(),
+                    consecutive_outside = 0
+                WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace')
+                "#,
+            )
+            .bind(user_id)
+            .bind(space_id)
+            .bind(lifecycle_state)
+            .bind(Utc::now() + Duration::hours(2))
+            .execute(pool)
+            .await?;
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn round_one(value: f64) -> f64 {

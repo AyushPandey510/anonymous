@@ -17,10 +17,16 @@ pub struct AppState {
 pub fn build_router(pool: PgPool, config: Config) -> Router {
     let (moderation_tx, moderation_rx) = tokio::sync::mpsc::channel(256);
     tokio::spawn(moderation::worker(pool.clone(), moderation_rx));
+
     let state = Arc::new(AppState {
-        pool,
-        config,
+        pool: pool.clone(),
+        config: config.clone(),
         moderation_tx,
+    });
+
+    let worker_state = state.clone();
+    tokio::spawn(async move {
+        geofence_session_worker(worker_state).await;
     });
 
     Router::new()
@@ -38,11 +44,54 @@ async fn health() -> Json<Value> {
     Json(json!({ "status": "ok" }))
 }
 
+async fn geofence_session_worker(state: Arc<AppState>) {
+    let interval = state.config.geofence_check_interval;
+    loop {
+        tokio::time::sleep(interval).await;
+        if let Err(e) = expire_stale_sessions(&state.pool).await {
+            tracing::warn!(%e, "session expiry worker error");
+        }
+    }
+}
+
+async fn expire_stale_sessions(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE activity.sessions
+        SET status = 'expired', expires_at = now()
+        WHERE status = 'active'
+          AND expires_at < now()
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    let expired = sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH expired AS (
+          UPDATE activity.sessions
+          SET status = 'expired', expires_at = now()
+          WHERE status = 'grace'
+            AND expires_at < now()
+          RETURNING space_id
+        )
+        SELECT COUNT(*) FROM expired
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if expired > 0 {
+        tracing::info!(%expired, "expired grace sessions");
+    }
+
+    Ok(())
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        auth::login,
-        auth::verify,
+        auth::register,
         auth::refresh,
         spaces::create_space,
         spaces::discover_spaces,
@@ -54,12 +103,14 @@ async fn health() -> Json<Value> {
         chat::report_message
     ),
     components(schemas(
-        auth::LoginRequest,
-        auth::VerifyRequest,
+        auth::RegisterRequest,
         auth::TokenResponse,
+        auth::RegisterResponse,
         spaces::CreateSpaceRequest,
         spaces::DiscoverQuery,
         spaces::JoinSpaceRequest,
+        spaces::SpaceWithDistance,
+        spaces::LeaveResponse,
         geofence::ValidateLocationRequest,
         geofence::ValidateLocationResponse,
         chat::SendMessageRequest,

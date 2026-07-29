@@ -12,7 +12,7 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use rand::seq::SliceRandom;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -48,16 +48,38 @@ pub struct JoinSpaceRequest {
     pub invite_code: Option<String>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SpaceWithDistance {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub visibility: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub radius_meters: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub distance_meters: f64,
+    pub member_count: i32,
+    pub joined: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LeaveResponse {
+    pub status: String,
+    pub message: String,
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/spaces", post(create_space))
         .route("/spaces/discover", get(discover_spaces))
         .route("/spaces/:space_id/join", post(join_space))
         .route("/spaces/:space_id/leave", post(leave_space))
-        .route("/me/spaces", get(list_user_spaces))
+        .route("/me/spaces", get(list_my_spaces))
+        .route("/me/joined-spaces", get(list_joined_spaces))
 }
 
-#[utoipa::path(post, path = "/spaces", request_body = CreateSpaceRequest, responses((status = 200, body = Space)))]
+#[utoipa::path(post, path = "/spaces", request_body = CreateSpaceRequest)]
 pub async fn create_space(
     AuthUser { id: user_id }: AuthUser,
     State(state): State<Arc<AppState>>,
@@ -67,18 +89,6 @@ pub async fn create_space(
         .validate()
         .map_err(|error| ApiError::Validation(error.to_string()))?;
     validate_space_payload(&payload)?;
-
-    let active_count = sqlx::query_scalar::<_, i64>(
-        "SELECT count(*) FROM activity.spaces WHERE archived_at IS NULL AND created_by = $1",
-    )
-    .bind(user_id)
-    .fetch_one(&state.pool)
-    .await?;
-    if active_count > 0 {
-        return Err(ApiError::Conflict(
-            "users may create one active space at a time".to_string(),
-        ));
-    }
 
     let nearby = sqlx::query_as::<_, (f64, f64, i32)>(
         "SELECT latitude, longitude, radius_meters FROM activity.spaces WHERE archived_at IS NULL",
@@ -103,7 +113,7 @@ pub async fn create_space(
         .count();
     if overlapping_count >= MAX_ACTIVE_SPACES_PER_LOCATION {
         return Err(ApiError::Conflict(
-            "this location already has the maximum active spaces".to_string(),
+            "this location already has the maximum active spaces (10)".to_string(),
         ));
     }
 
@@ -114,9 +124,9 @@ pub async fn create_space(
         RETURNING id, name, description, visibility::text, latitude, longitude, radius_meters, created_at
         "#,
     )
-    .bind(payload.name)
-    .bind(payload.description)
-    .bind(payload.visibility)
+    .bind(&payload.name)
+    .bind(&payload.description)
+    .bind(&payload.visibility)
     .bind(payload.latitude)
     .bind(payload.longitude)
     .bind(payload.radius_meters)
@@ -127,17 +137,25 @@ pub async fn create_space(
     Ok(Json(space))
 }
 
-#[utoipa::path(get, path = "/spaces/discover", params(DiscoverQuery), responses((status = 200, body = Vec<Space>)))]
+#[utoipa::path(get, path = "/spaces/discover", params(DiscoverQuery))]
 pub async fn discover_spaces(
-    _user: AuthUser,
+    user: AuthUser,
     State(state): State<Arc<AppState>>,
     Query(query): Query<DiscoverQuery>,
-) -> ApiResult<Json<Vec<Space>>> {
+) -> ApiResult<Json<Vec<SpaceWithDistance>>> {
     if !geofence::valid_lat_lon(query.latitude, query.longitude) {
         return Err(ApiError::Validation(
             "invalid latitude or longitude".to_string(),
         ));
     }
+
+    let joined_ids: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT space_id FROM activity.sessions WHERE user_id = $1 AND status IN ('active', 'grace') AND expires_at > now()",
+    )
+    .bind(user.id)
+    .fetch_all(&state.pool)
+    .await?;
+    let joined_set: std::collections::HashSet<Uuid> = joined_ids.into_iter().map(|r| r.0).collect();
 
     let spaces = sqlx::query_as::<_, Space>(
         r#"
@@ -154,24 +172,53 @@ pub async fn discover_spaces(
         latitude: query.latitude,
         longitude: query.longitude,
     };
-    Ok(Json(
-        spaces
-            .into_iter()
-            .filter(|space| {
-                geofence::contains(
-                    Point {
-                        latitude: space.latitude,
-                        longitude: space.longitude,
-                    },
-                    space.radius_meters,
-                    here,
-                )
-            })
-            .collect(),
-    ))
+
+    let mut result: Vec<SpaceWithDistance> = spaces
+        .into_iter()
+        .filter(|space| {
+            geofence::contains(
+                Point {
+                    latitude: space.latitude,
+                    longitude: space.longitude,
+                },
+                space.radius_meters,
+                here,
+            )
+        })
+        .map(|space| {
+            let dist = geofence::distance_meters(
+                Point {
+                    latitude: space.latitude,
+                    longitude: space.longitude,
+                },
+                here,
+            );
+            SpaceWithDistance {
+                id: space.id,
+                name: space.name,
+                description: space.description,
+                visibility: space.visibility,
+                latitude: space.latitude,
+                longitude: space.longitude,
+                radius_meters: space.radius_meters,
+                created_at: space.created_at,
+                distance_meters: (dist * 10.0).round() / 10.0,
+                member_count: 0,
+                joined: joined_set.contains(&space.id),
+            }
+        })
+        .collect();
+
+    result.sort_by(|a, b| {
+        a.distance_meters
+            .partial_cmp(&b.distance_meters)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    Ok(Json(result))
 }
 
-#[utoipa::path(post, path = "/spaces/{space_id}/join", request_body = JoinSpaceRequest, responses((status = 200, body = Session)))]
+#[utoipa::path(post, path = "/spaces/{space_id}/join")]
 pub async fn join_space(
     AuthUser { id: user_id }: AuthUser,
     State(state): State<Arc<AppState>>,
@@ -231,21 +278,45 @@ pub async fn join_space(
         return Err(ApiError::Forbidden);
     }
 
+    let existing = sqlx::query_as::<_, (Uuid, String, chrono::DateTime<chrono::Utc>)>(
+        "SELECT id, anonymous_id, expires_at FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace') AND expires_at > now()",
+    )
+    .bind(user_id)
+    .bind(space_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if let Some((session_id, _, _)) = existing {
+        let session = sqlx::query_as::<_, Session>(
+            "UPDATE activity.sessions SET status = 'active', lifecycle_state = 'inside', consecutive_outside = 0, last_validated_at = now(), expires_at = $3 WHERE id = $1 RETURNING id, space_id, anonymous_id, expires_at, status::text",
+        )
+        .bind(session_id)
+        .bind(Utc::now() + Duration::hours(2))
+        .fetch_one(&state.pool)
+        .await?;
+        return Ok(Json(session));
+    }
+
     let anonymous_id = random_anonymous_name();
-    let expires_at = Utc::now() + Duration::days(1);
+    let expires_at = Utc::now() + Duration::hours(2);
     let session = sqlx::query_as::<_, Session>(
         r#"
-        INSERT INTO activity.sessions (user_id, space_id, anonymous_id, expires_at, status)
-        VALUES ($1, $2, $3, $4, 'active')
+        INSERT INTO activity.sessions (user_id, space_id, anonymous_id, expires_at, status, lifecycle_state)
+        VALUES ($1, $2, $3, $4, 'active', 'inside')
         RETURNING id, space_id, anonymous_id, expires_at, status::text
         "#,
     )
     .bind(user_id)
     .bind(space_id)
-    .bind(anonymous_id)
+    .bind(&anonymous_id)
     .bind(expires_at)
     .fetch_one(&state.pool)
     .await?;
+
+    sqlx::query("UPDATE activity.spaces SET member_count = member_count + 1 WHERE id = $1")
+        .bind(space_id)
+        .execute(&state.pool)
+        .await?;
 
     Ok(Json(session))
 }
@@ -255,21 +326,29 @@ pub async fn leave_space(
     AuthUser { id: user_id }: AuthUser,
     State(state): State<Arc<AppState>>,
     Path(space_id): Path<Uuid>,
-) -> ApiResult<Json<serde_json::Value>> {
-    let grace_until =
-        Utc::now() + Duration::from_std(state.config.session_grace).map_err(anyhow::Error::from)?;
-    sqlx::query("UPDATE activity.sessions SET status = 'grace', expires_at = $3 WHERE user_id = $1 AND space_id = $2 AND status = 'active'")
-        .bind(user_id)
-        .bind(space_id)
-        .bind(grace_until)
-        .execute(&state.pool)
-        .await?;
-    Ok(Json(
-        serde_json::json!({ "status": "grace", "expires_at": grace_until }),
-    ))
+) -> ApiResult<Json<LeaveResponse>> {
+    let result = sqlx::query(
+        "UPDATE activity.sessions SET status = 'expired', expires_at = now() WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace')",
+    )
+    .bind(user_id)
+    .bind(space_id)
+    .execute(&state.pool)
+    .await?;
+
+    if result.rows_affected() > 0 {
+        sqlx::query("UPDATE activity.spaces SET member_count = GREATEST(member_count - 1, 0) WHERE id = $1")
+            .bind(space_id)
+            .execute(&state.pool)
+            .await?;
+    }
+
+    Ok(Json(LeaveResponse {
+        status: "left".to_string(),
+        message: "You have left the space".to_string(),
+    }))
 }
 
-pub async fn list_user_spaces(
+pub async fn list_my_spaces(
     AuthUser { id: user_id }: AuthUser,
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<Vec<Space>>> {
@@ -279,6 +358,25 @@ pub async fn list_user_spaces(
         FROM activity.spaces
         WHERE created_by = $1 AND archived_at IS NULL
         ORDER BY created_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(spaces))
+}
+
+pub async fn list_joined_spaces(
+    AuthUser { id: user_id }: AuthUser,
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<Json<Vec<Space>>> {
+    let spaces = sqlx::query_as::<_, Space>(
+        r#"
+        SELECT s.id, s.name, s.description, s.visibility::text, s.latitude, s.longitude, s.radius_meters, s.created_at
+        FROM activity.spaces s
+        JOIN activity.sessions sess ON sess.space_id = s.id
+        WHERE sess.user_id = $1 AND sess.status IN ('active', 'grace') AND sess.expires_at > now() AND s.archived_at IS NULL
+        ORDER BY sess.joined_at DESC
         "#,
     )
     .bind(user_id)

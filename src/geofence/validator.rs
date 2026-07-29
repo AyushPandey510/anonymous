@@ -2,7 +2,7 @@ use super::{
     geometry::{distance_meters, valid_lat_lon},
     hysteresis::{buffered_outside_decision, classify_distance},
     models::{
-        Geofence, GeofenceDecision, GeofenceValidation, LocationFix, Point, PreviousLocationFix,
+        Geofence, GeofenceDecision, GeofenceValidation, LocationFix, PreviousLocationFix,
         SessionLifecycleState, ValidationHistory,
     },
     smoothing::median_smoothed_fix,
@@ -148,6 +148,7 @@ fn rejected_with_distance(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geofence::models::Point;
     use chrono::{Duration, Utc};
 
     #[test]

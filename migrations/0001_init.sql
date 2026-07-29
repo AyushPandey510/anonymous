@@ -1,14 +1,29 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TYPE space_visibility AS ENUM ('public', 'private');
-CREATE TYPE session_status AS ENUM ('active', 'grace', 'expired');
-CREATE TYPE moderation_status AS ENUM ('clean', 'flagged', 'hidden');
-CREATE TYPE report_status AS ENUM ('pending', 'reviewed', 'actioned', 'dismissed');
+DO $$ BEGIN
+    CREATE TYPE space_visibility AS ENUM ('public', 'private');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE session_status AS ENUM ('active', 'grace', 'expired');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE moderation_status AS ENUM ('clean', 'flagged', 'hidden');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE report_status AS ENUM ('pending', 'reviewed', 'actioned', 'dismissed');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE SCHEMA IF NOT EXISTS identity;
 CREATE SCHEMA IF NOT EXISTS activity;
 
-CREATE TABLE identity.users (
+CREATE TABLE IF NOT EXISTS identity.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     phone_lookup_hash TEXT NOT NULL UNIQUE,
     phone_hash TEXT NOT NULL,
@@ -16,7 +31,7 @@ CREATE TABLE identity.users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE identity.otp_challenges (
+CREATE TABLE IF NOT EXISTS identity.otp_challenges (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     phone_lookup_hash TEXT NOT NULL,
     code_hash TEXT NOT NULL,
@@ -25,7 +40,7 @@ CREATE TABLE identity.otp_challenges (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE identity.refresh_tokens (
+CREATE TABLE IF NOT EXISTS identity.refresh_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
     token_hash TEXT NOT NULL UNIQUE,
@@ -34,7 +49,7 @@ CREATE TABLE identity.refresh_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE activity.spaces (
+CREATE TABLE IF NOT EXISTS activity.spaces (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     description TEXT,
@@ -48,10 +63,10 @@ CREATE TABLE activity.spaces (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX spaces_location_idx ON activity.spaces (latitude, longitude);
-CREATE UNIQUE INDEX one_active_space_per_creator_idx ON activity.spaces (created_by) WHERE archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS spaces_location_idx ON activity.spaces (latitude, longitude);
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_space_per_creator_idx ON activity.spaces (created_by) WHERE archived_at IS NULL;
 
-CREATE TABLE activity.space_invitations (
+CREATE TABLE IF NOT EXISTS activity.space_invitations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     space_id UUID NOT NULL REFERENCES activity.spaces(id) ON DELETE CASCADE,
     invite_code TEXT NOT NULL UNIQUE,
@@ -62,7 +77,7 @@ CREATE TABLE activity.space_invitations (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE activity.sessions (
+CREATE TABLE IF NOT EXISTS activity.sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     space_id UUID NOT NULL REFERENCES activity.spaces(id) ON DELETE CASCADE,
@@ -72,10 +87,10 @@ CREATE TABLE activity.sessions (
     status session_status NOT NULL DEFAULT 'active'
 );
 
-CREATE INDEX sessions_user_space_idx ON activity.sessions (user_id, space_id, status);
-CREATE UNIQUE INDEX sessions_anonymous_space_idx ON activity.sessions (space_id, anonymous_id) WHERE status <> 'expired';
+CREATE INDEX IF NOT EXISTS sessions_user_space_idx ON activity.sessions (user_id, space_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS sessions_anonymous_space_idx ON activity.sessions (space_id, anonymous_id) WHERE status <> 'expired';
 
-CREATE TABLE activity.messages (
+CREATE TABLE IF NOT EXISTS activity.messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     space_id UUID NOT NULL REFERENCES activity.spaces(id) ON DELETE CASCADE,
     session_id UUID NOT NULL REFERENCES activity.sessions(id) ON DELETE CASCADE,
@@ -87,9 +102,9 @@ CREATE TABLE activity.messages (
     moderation_status moderation_status NOT NULL DEFAULT 'clean'
 );
 
-CREATE INDEX messages_space_created_idx ON activity.messages (space_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS messages_space_created_idx ON activity.messages (space_id, created_at DESC);
 
-CREATE TABLE activity.reactions (
+CREATE TABLE IF NOT EXISTS activity.reactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     message_id UUID NOT NULL REFERENCES activity.messages(id) ON DELETE CASCADE,
     session_id UUID NOT NULL REFERENCES activity.sessions(id) ON DELETE CASCADE,
@@ -98,7 +113,7 @@ CREATE TABLE activity.reactions (
     UNIQUE (message_id, session_id, emoji)
 );
 
-CREATE TABLE activity.reports (
+CREATE TABLE IF NOT EXISTS activity.reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reporter_id UUID NOT NULL,
     message_id UUID NOT NULL REFERENCES activity.messages(id) ON DELETE CASCADE,
@@ -107,7 +122,7 @@ CREATE TABLE activity.reports (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE activity.moderation_events (
+CREATE TABLE IF NOT EXISTS activity.moderation_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     message_id UUID NOT NULL REFERENCES activity.messages(id) ON DELETE CASCADE,
     category TEXT NOT NULL,

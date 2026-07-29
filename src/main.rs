@@ -32,6 +32,7 @@ async fn main() -> anyhow::Result<()> {
         .connect(&config.database_url)
         .await
         .context("connect to postgres")?;
+    sqlx::migrate!("./migrations").run(&pool).await.context("run migrations")?;
 
     let app = build_router(pool, config.clone()).layer(TraceLayer::new_for_http());
     let listener = TcpListener::bind(&config.bind_addr).await?;

@@ -2,10 +2,6 @@ use crate::{
     app::AppState,
     error::{ApiError, ApiResult},
 };
-use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
-};
 use async_trait::async_trait;
 use axum::{
     extract::{FromRequestParts, State},
@@ -23,7 +19,6 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::Validate;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -33,27 +28,10 @@ pub struct Claims {
     pub exp: usize,
 }
 
-#[derive(Debug, Deserialize, ToSchema, Validate)]
-pub struct LoginRequest {
-    #[validate(length(min = 7, max = 20))]
-    pub phone_number: String,
-    #[validate(length(min = 16, max = 256))]
-    pub device_key: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct LoginResponse {
-    pub challenge_id: Uuid,
-    pub expires_at: DateTime<Utc>,
-    pub dev_otp: String,
-}
-
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct VerifyRequest {
-    pub challenge_id: Uuid,
-    pub phone_number: String,
-    pub device_key: String,
-    pub otp: String,
+pub struct RegisterRequest {
+    pub device_id: String,
+    pub device_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -66,6 +44,16 @@ pub struct TokenResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub token_type: String,
+    pub user_id: Uuid,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RegisterResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub token_type: String,
+    pub user_id: Uuid,
+    pub is_new: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -75,93 +63,67 @@ pub struct AuthUser {
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/auth/login", post(login))
-        .route("/auth/verify", post(verify))
+        .route("/auth/register", post(register))
         .route("/auth/refresh", post(refresh))
 }
 
-#[utoipa::path(post, path = "/auth/login", request_body = LoginRequest)]
-pub async fn login(
+#[utoipa::path(post, path = "/auth/register", request_body = RegisterRequest)]
+pub async fn register(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<LoginRequest>,
-) -> ApiResult<Json<LoginResponse>> {
-    payload
-        .validate()
-        .map_err(|error| ApiError::Validation(error.to_string()))?;
-    let code = format!("{:06}", rand::thread_rng().gen_range(0..1_000_000));
-    let code_hash = hash_secret(&code)?;
-    let phone_lookup_hash = phone_lookup_hash(&payload.phone_number, &state.config.phone_pepper)?;
-    let expires_at = Utc::now() + Duration::minutes(5);
-
-    let challenge_id = sqlx::query_scalar::<_, Uuid>(
-        "INSERT INTO identity.otp_challenges (phone_lookup_hash, code_hash, expires_at) VALUES ($1, $2, $3) RETURNING id",
-    )
-    .bind(phone_lookup_hash)
-    .bind(code_hash)
-    .bind(expires_at)
-    .fetch_one(&state.pool)
-    .await?;
-
-    Ok(Json(LoginResponse {
-        challenge_id,
-        expires_at,
-        dev_otp: code,
-    }))
-}
-
-#[utoipa::path(post, path = "/auth/verify", request_body = VerifyRequest, responses((status = 200, body = TokenResponse)))]
-pub async fn verify(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<VerifyRequest>,
-) -> ApiResult<Json<TokenResponse>> {
-    let challenge = sqlx::query_as::<_, (String, DateTime<Utc>, Option<DateTime<Utc>>)>(
-        "SELECT code_hash, expires_at, consumed_at FROM identity.otp_challenges WHERE id = $1",
-    )
-    .bind(payload.challenge_id)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or(ApiError::Unauthorized)?;
-
-    if challenge.1 < Utc::now()
-        || challenge.2.is_some()
-        || !verify_secret(&payload.otp, &challenge.0)?
-    {
-        return Err(ApiError::Unauthorized);
+    Json(payload): Json<RegisterRequest>,
+) -> ApiResult<Json<RegisterResponse>> {
+    if payload.device_id.trim().is_empty() {
+        return Err(ApiError::Validation("device_id is required".to_string()));
     }
 
-    sqlx::query("UPDATE identity.otp_challenges SET consumed_at = now() WHERE id = $1")
-        .bind(payload.challenge_id)
-        .execute(&state.pool)
-        .await?;
-
-    let phone_lookup = phone_lookup_hash(&payload.phone_number, &state.config.phone_pepper)?;
-    let phone_hash = hash_secret(&payload.phone_number)?;
-    let user_id = sqlx::query_scalar::<_, Uuid>(
-        r#"
-        INSERT INTO identity.users (phone_lookup_hash, phone_hash, device_key)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (phone_lookup_hash) DO UPDATE SET device_key = EXCLUDED.device_key
-        RETURNING id
-        "#,
+    let existing = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT id FROM identity.users WHERE device_id = $1",
     )
-    .bind(phone_lookup)
-    .bind(phone_hash)
-    .bind(payload.device_key)
-    .fetch_one(&state.pool)
+    .bind(&payload.device_id)
+    .fetch_optional(&state.pool)
     .await?;
 
-    issue_tokens(
+    let (user_id, is_new) = if let Some((id,)) = existing {
+        sqlx::query("UPDATE identity.users SET last_seen_at = now(), device_name = COALESCE($2, device_name) WHERE id = $1")
+            .bind(id)
+            .bind(&payload.device_name)
+            .execute(&state.pool)
+            .await?;
+        (id, false)
+    } else {
+        let id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            INSERT INTO identity.users (device_id, device_name)
+            VALUES ($1, $2)
+            RETURNING id
+            "#,
+        )
+        .bind(&payload.device_id)
+        .bind(&payload.device_name)
+        .fetch_one(&state.pool)
+        .await?;
+        (id, true)
+    };
+
+    let tokens = issue_tokens(
         &state.pool,
         &state.config.jwt_secret,
         user_id,
         state.config.access_token_ttl,
         state.config.refresh_token_ttl,
     )
-    .await
-    .map(Json)
+    .await?;
+
+    Ok(Json(RegisterResponse {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_type: tokens.token_type,
+        user_id,
+        is_new,
+    }))
 }
 
-#[utoipa::path(post, path = "/auth/refresh", request_body = RefreshRequest, responses((status = 200, body = TokenResponse)))]
+#[utoipa::path(post, path = "/auth/refresh", request_body = RefreshRequest)]
 pub async fn refresh(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<RefreshRequest>,
@@ -225,6 +187,7 @@ async fn issue_tokens(
         access_token,
         refresh_token,
         token_type: "Bearer".to_string(),
+        user_id,
     })
 }
 
@@ -255,35 +218,8 @@ impl FromRequestParts<Arc<AppState>> for AuthUser {
     }
 }
 
-fn phone_lookup_hash(phone_number: &str, pepper: &str) -> ApiResult<String> {
-    hash_lookup(&normalize_phone(phone_number), pepper)
-}
-
-fn normalize_phone(phone_number: &str) -> String {
-    phone_number
-        .chars()
-        .filter(|c| c.is_ascii_digit() || *c == '+')
-        .collect()
-}
-
 fn hash_lookup(value: &str, secret: &str) -> ApiResult<String> {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(anyhow::Error::from)?;
     mac.update(value.as_bytes());
     Ok(hex::encode(mac.finalize().into_bytes()))
-}
-
-fn hash_secret(value: &str) -> ApiResult<String> {
-    let salt = SaltString::generate(&mut rand::thread_rng());
-    Argon2::default()
-        .hash_password(value.as_bytes(), &salt)
-        .map(|hash| hash.to_string())
-        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))
-}
-
-fn verify_secret(value: &str, hash: &str) -> ApiResult<bool> {
-    let parsed =
-        PasswordHash::new(hash).map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
-    Ok(Argon2::default()
-        .verify_password(value.as_bytes(), &parsed)
-        .is_ok())
 }
