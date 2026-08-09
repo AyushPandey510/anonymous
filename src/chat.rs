@@ -72,10 +72,23 @@ pub async fn list_messages(
 
     let messages = sqlx::query_as::<_, Message>(
         r#"
-        SELECT id, space_id, anonymous_id, content, reply_to, created_at, moderation_status::text
-        FROM activity.messages
-        WHERE space_id = $1 AND deleted_at IS NULL AND moderation_status <> 'hidden'
-        ORDER BY created_at ASC
+        SELECT
+            m.id, m.space_id, m.anonymous_id, m.content, m.reply_to, m.created_at,
+            m.moderation_status::text,
+            r.content AS reply_content,
+            COALESCE((
+                SELECT json_agg(json_build_object('emoji', agg.emoji, 'count', agg.cnt))
+                FROM (
+                    SELECT emoji, COUNT(*) AS cnt
+                    FROM activity.reactions
+                    WHERE message_id = m.id
+                    GROUP BY emoji
+                ) agg
+            ), '[]'::json) AS reactions
+        FROM activity.messages m
+        LEFT JOIN activity.messages r ON r.id = m.reply_to
+        WHERE m.space_id = $1 AND m.deleted_at IS NULL AND m.moderation_status <> 'hidden'
+        ORDER BY m.created_at ASC
         LIMIT 100
         "#,
     )
@@ -99,7 +112,7 @@ pub async fn send_message(
     let anonymous_id =
         active_session_anonymous_id(&state, user_id, space_id, payload.session_id).await?;
 
-    let message = sqlx::query_as::<_, Message>(
+    let mut message = sqlx::query_as::<_, Message>(
         r#"
         INSERT INTO activity.messages (space_id, session_id, anonymous_id, content, reply_to)
         VALUES ($1, $2, $3, $4, $5)
@@ -114,6 +127,15 @@ pub async fn send_message(
     .fetch_one(&state.pool)
     .await?;
 
+    if let Some(reply_id) = message.reply_to {
+        message.reply_content = sqlx::query_scalar::<_, String>(
+            "SELECT content FROM activity.messages WHERE id = $1",
+        )
+        .bind(reply_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    }
+
     let _ = state
         .moderation_tx
         .send(ModerationJob {
@@ -121,6 +143,12 @@ pub async fn send_message(
             content: message.content.clone(),
         })
         .await;
+
+    let event = serde_json::json!({
+        "type": "message",
+        "message": message,
+    });
+    let _ = state.broadcast_sender(space_id).send(event.to_string());
     Ok(Json(message))
 }
 
@@ -193,30 +221,79 @@ pub async fn react_message(
             .fetch_optional(&state.pool)
             .await?
             .ok_or(ApiError::NotFound)?;
-    if session_space.0 != message_space.0 {
+    let space_id = message_space.0;
+    if session_space.0 != space_id {
         return Err(ApiError::Forbidden);
     }
 
     sqlx::query("INSERT INTO activity.reactions (message_id, session_id, emoji) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
         .bind(message_id)
         .bind(payload.session_id)
-        .bind(payload.emoji)
+        .bind(&payload.emoji)
         .execute(&state.pool)
         .await?;
-    Ok(Json(serde_json::json!({ "status": "reacted" })))
+
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM activity.reactions WHERE message_id = $1 AND emoji = $2",
+    )
+    .bind(message_id)
+    .bind(&payload.emoji)
+    .fetch_one(&state.pool)
+    .await?;
+
+    let event = serde_json::json!({
+        "type": "reaction",
+        "message_id": message_id,
+        "emoji": payload.emoji,
+        "count": count,
+    });
+    let _ = state.broadcast_sender(space_id).send(event.to_string());
+
+    Ok(Json(event))
 }
 
-async fn websocket(ws: WebSocketUpgrade, _user: AuthUser, Path(space_id): Path<Uuid>) -> Response {
-    ws.on_upgrade(move |socket| websocket_session(socket, space_id))
+async fn websocket(
+    ws: WebSocketUpgrade,
+    AuthUser { id: user_id }: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(space_id): Path<Uuid>,
+) -> ApiResult<Response> {
+    let has_session = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace') AND expires_at > now())",
+    )
+    .bind(user_id)
+    .bind(space_id)
+    .fetch_one(&state.pool)
+    .await?;
+    if !has_session {
+        return Err(ApiError::Forbidden);
+    }
+
+    Ok(ws.on_upgrade(move |socket| websocket_session(state, socket, space_id)))
 }
 
-async fn websocket_session(mut socket: WebSocket, space_id: Uuid) {
-    let _ = socket
-        .send(WsMessage::Text(format!("connected:{space_id}")))
-        .await;
-    while let Some(Ok(message)) = socket.recv().await {
-        if matches!(message, WsMessage::Close(_)) {
-            break;
+async fn websocket_session(state: Arc<AppState>, mut socket: WebSocket, space_id: Uuid) {
+    let mut rx = state.broadcast_sender(space_id).subscribe();
+    loop {
+        tokio::select! {
+            received = rx.recv() => match received {
+                Ok(text) => {
+                    if socket.send(WsMessage::Text(text)).await.is_err() {
+                        break;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            },
+            incoming = socket.recv() => match incoming {
+                Some(Ok(WsMessage::Close(_))) | None => break,
+                Some(Ok(WsMessage::Ping(payload))) => {
+                    if socket.send(WsMessage::Pong(payload)).await.is_err() {
+                        break;
+                    }
+                }
+                _ => {}
+            },
         }
     }
 }

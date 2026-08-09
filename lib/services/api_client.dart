@@ -10,12 +10,12 @@ class _PendingRequest {
 
 class ApiClient {
   final String baseUrl;
-  final http.Client _client = http.Client();
+  final http.Client _client;
   String? accessToken;
   String? refreshToken;
   _PendingRequest? _lastRequest;
 
-  ApiClient(this.baseUrl);
+  ApiClient(this.baseUrl, {http.Client? client}) : _client = client ?? http.Client();
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -23,70 +23,62 @@ class ApiClient {
       };
 
   Future<Map<String, dynamic>> get(String path) async {
-    _lastRequest = _PendingRequest('GET', path, null);
-    final response = await _client.get(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers,
-    );
-    return _handleResponse(response);
+    final response = await _send('GET', path, null);
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<List<dynamic>> getList(String path) async {
-    _lastRequest = _PendingRequest('GET', path, null);
-    final response = await _client.get(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers,
-    );
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return jsonDecode(response.body) as List<dynamic>;
-    }
-    throw ApiException.fromResponse(response);
+    final response = await _send('GET', path, null);
+    return jsonDecode(response.body) as List<dynamic>;
   }
 
   Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic>? body,
   }) async {
-    _lastRequest = _PendingRequest('POST', path, body);
-    final response = await _client.post(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers,
-      body: body != null ? jsonEncode(body) : null,
-    );
-    return _handleResponse(response);
+    final response = await _send('POST', path, body);
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
-    }
+  Future<http.Response> _send(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
+    _lastRequest = _PendingRequest(method, path, body);
+    var response = await _do(method, path, body);
 
     if (response.statusCode == 401 && refreshToken != null) {
-      final refreshed = await _tryRefresh();
-      if (refreshed && _lastRequest != null) {
+      if (await _tryRefresh() && _lastRequest != null) {
         final req = _lastRequest!;
-        if (req.method == 'POST') {
-          final retry = await _client.post(
-            Uri.parse('$baseUrl${req.path}'),
-            headers: _headers,
-            body: req.body != null ? jsonEncode(req.body) : null,
-          );
-          if (retry.statusCode >= 200 && retry.statusCode < 300) {
-            return jsonDecode(retry.body) as Map<String, dynamic>;
-          }
-        } else {
-          final retry = await _client.get(
-            Uri.parse('$baseUrl${req.path}'),
-            headers: _headers,
-          );
-          if (retry.statusCode >= 200 && retry.statusCode < 300) {
-            return jsonDecode(retry.body) as Map<String, dynamic>;
-          }
-        }
+        response = await _do(req.method, req.path, req.body);
       }
     }
 
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response;
+    }
     throw ApiException.fromResponse(response);
+  }
+
+  Future<http.Response> _do(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
+    final uri = Uri.parse('$baseUrl$path');
+    switch (method) {
+      case 'GET':
+        return _client.get(uri, headers: _headers);
+      case 'POST':
+        return _client.post(
+          uri,
+          headers: _headers,
+          body: body != null ? jsonEncode(body) : null,
+        );
+      default:
+        throw ArgumentError('Unsupported method: $method');
+    }
   }
 
   Future<bool> _tryRefresh() async {

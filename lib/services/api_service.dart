@@ -66,19 +66,35 @@ class SessionData {
       );
 }
 
+class ReactionData {
+  final String emoji;
+  final int count;
+
+  ReactionData({required this.emoji, required this.count});
+
+  factory ReactionData.fromJson(Map<String, dynamic> json) => ReactionData(
+        emoji: json['emoji'] as String,
+        count: json['count'] as int,
+      );
+}
+
 class MessageData {
   final String id;
   final String anonymousId;
   final String content;
   final String? replyTo;
+  final String? replyContent;
   final String createdAt;
+  final List<ReactionData> reactions;
 
   MessageData({
     required this.id,
     required this.anonymousId,
     required this.content,
     this.replyTo,
+    this.replyContent,
     required this.createdAt,
+    this.reactions = const [],
   });
 
   factory MessageData.fromJson(Map<String, dynamic> json) => MessageData(
@@ -86,7 +102,11 @@ class MessageData {
         anonymousId: json['anonymous_id'] as String,
         content: json['content'] as String,
         replyTo: json['reply_to'] as String?,
+        replyContent: json['reply_content'] as String?,
         createdAt: json['created_at'] as String,
+        reactions: (json['reactions'] as List<dynamic>? ?? [])
+            .map((e) => ReactionData.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }
 
@@ -110,9 +130,6 @@ class GeofenceValidationData {
         distanceMeters: (json['distance_meters'] as num).toDouble(),
         canParticipate: json['can_participate'] as bool,
       );
-
-  bool get isInside =>
-      decision == 'inside' || decision == 'near_boundary';
 }
 
 class ApiService {
@@ -195,9 +212,17 @@ class ApiService {
     final response = await client.post('/spaces/$spaceId/messages', body: {
       'session_id': sessionId,
       'content': content,
-      if (replyTo != null) 'reply_to': replyTo,
+      'reply_to': ?replyTo,
     });
     return MessageData.fromJson(response);
+  }
+
+  Future<void> reactToMessage(
+      String messageId, String sessionId, String emoji) async {
+    await client.post('/messages/$messageId/react', body: {
+      'session_id': sessionId,
+      'emoji': emoji,
+    });
   }
 
   // Geofence
@@ -214,11 +239,5 @@ class ApiService {
       'accuracy_meters': accuracyMeters,
     }..removeWhere((_, v) => v == null));
     return GeofenceValidationData.fromJson(response);
-  }
-
-  // WebSocket URL
-  String wsUrl(String spaceId) {
-    final base = client.baseUrl.replaceFirst('http', 'ws');
-    return '$base/ws/spaces/$spaceId';
   }
 }

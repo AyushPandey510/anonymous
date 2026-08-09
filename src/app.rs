@@ -2,16 +2,30 @@ use crate::{auth, chat, config::Config, geofence, models, moderation, spaces};
 use axum::{routing::get, Json, Router};
 use serde_json::{json, Value};
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub config: Config,
     pub moderation_tx: tokio::sync::mpsc::Sender<moderation::ModerationJob>,
+    pub room_broadcasts: Arc<Mutex<HashMap<Uuid, broadcast::Sender<String>>>>,
+}
+
+impl AppState {
+    pub fn broadcast_sender(&self, space_id: Uuid) -> broadcast::Sender<String> {
+        let mut rooms = self.room_broadcasts.lock().unwrap();
+        rooms
+            .entry(space_id)
+            .or_insert_with(|| broadcast::channel(256).0)
+            .clone()
+    }
 }
 
 pub fn build_router(pool: PgPool, config: Config) -> Router {
@@ -22,6 +36,7 @@ pub fn build_router(pool: PgPool, config: Config) -> Router {
         pool: pool.clone(),
         config: config.clone(),
         moderation_tx,
+        room_broadcasts: Arc::new(Mutex::new(HashMap::new())),
     });
 
     let worker_state = state.clone();

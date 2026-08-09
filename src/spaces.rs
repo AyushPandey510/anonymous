@@ -225,6 +225,8 @@ pub async fn join_space(
     Path(space_id): Path<Uuid>,
     Json(payload): Json<JoinSpaceRequest>,
 ) -> ApiResult<Json<Session>> {
+    let session_ttl =
+        Duration::from_std(state.config.session_ttl).unwrap_or_else(|_| Duration::hours(2));
     if !geofence::valid_lat_lon(payload.latitude, payload.longitude) {
         return Err(ApiError::Validation(
             "invalid latitude or longitude".to_string(),
@@ -253,6 +255,25 @@ pub async fn join_space(
         }
     }
 
+    let existing = sqlx::query_as::<_, (Uuid, String, chrono::DateTime<chrono::Utc>)>(
+        "SELECT id, anonymous_id, expires_at FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace') AND expires_at > now()",
+    )
+    .bind(user_id)
+    .bind(space_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if let Some((session_id, _, _)) = existing {
+        let session = sqlx::query_as::<_, Session>(
+            "UPDATE activity.sessions SET status = 'active', lifecycle_state = 'inside', consecutive_outside = 0, last_validated_at = now(), expires_at = $2 WHERE id = $1 RETURNING id, space_id, anonymous_id, expires_at, status::text",
+        )
+        .bind(session_id)
+        .bind(Utc::now() + session_ttl)
+        .fetch_one(&state.pool)
+        .await?;
+        return Ok(Json(session));
+    }
+
     let validation = geofence::validate(
         Geofence {
             center: Point {
@@ -278,27 +299,8 @@ pub async fn join_space(
         return Err(ApiError::Forbidden);
     }
 
-    let existing = sqlx::query_as::<_, (Uuid, String, chrono::DateTime<chrono::Utc>)>(
-        "SELECT id, anonymous_id, expires_at FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace') AND expires_at > now()",
-    )
-    .bind(user_id)
-    .bind(space_id)
-    .fetch_optional(&state.pool)
-    .await?;
-
-    if let Some((session_id, _, _)) = existing {
-        let session = sqlx::query_as::<_, Session>(
-            "UPDATE activity.sessions SET status = 'active', lifecycle_state = 'inside', consecutive_outside = 0, last_validated_at = now(), expires_at = $3 WHERE id = $1 RETURNING id, space_id, anonymous_id, expires_at, status::text",
-        )
-        .bind(session_id)
-        .bind(Utc::now() + Duration::hours(2))
-        .fetch_one(&state.pool)
-        .await?;
-        return Ok(Json(session));
-    }
-
     let anonymous_id = random_anonymous_name();
-    let expires_at = Utc::now() + Duration::hours(2);
+    let expires_at = Utc::now() + session_ttl;
     let session = sqlx::query_as::<_, Session>(
         r#"
         INSERT INTO activity.sessions (user_id, space_id, anonymous_id, expires_at, status, lifecycle_state)

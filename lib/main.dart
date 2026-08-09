@@ -10,6 +10,7 @@ import 'package:space_mobile/features/location/presentation/location_selection_s
 import 'package:space_mobile/services/api_client.dart';
 import 'package:space_mobile/services/api_service.dart';
 import 'package:space_mobile/services/auth_service.dart';
+import 'package:space_mobile/services/chat_socket.dart';
 
 void main() {
   runApp(const SpaceApp());
@@ -129,7 +130,7 @@ class _AppLoaderState extends State<AppLoader> {
   }
 }
 
-enum AppScreen { location, discovery, chat }
+enum AppScreen { location, discovery, chat, mySpaces }
 
 class SpaceShell extends StatefulWidget {
   const SpaceShell({super.key, required this.api, required this.auth});
@@ -249,16 +250,8 @@ class _SpaceShellState extends State<SpaceShell> {
       AppScreen.location => LocationSelectionScreen(
           onLocationSelected: _onLocationSelected,
         ),
-      AppScreen.discovery => SpaceDiscoveryScreen(
-          api: widget.api,
-          latitude: _userLocation!.latitude,
-          longitude: _userLocation!.longitude,
-          onJoinSpace: _onJoinSpace,
-          onCreateSpace: _onCreateSpace,
-          onChangeLocation: _onChangeLocation,
-          onLogout: _onLogout,
-        ),
-      AppScreen.chat => _ChatScreen(
+      AppScreen.discovery || AppScreen.mySpaces => _buildHomeTabs(),
+      AppScreen.chat => ChatScreen(
           space: _activeSpace!,
           sessionId: _sessionId!,
           anonymousName: _anonymousName!,
@@ -269,6 +262,51 @@ class _SpaceShellState extends State<SpaceShell> {
     };
   }
 
+  Widget _buildHomeTabs() {
+    final selectedIndex = _screen == AppScreen.discovery ? 0 : 1;
+    return Scaffold(
+      backgroundColor: SpaceColors.black,
+      body: _screen == AppScreen.discovery
+          ? SpaceDiscoveryScreen(
+              api: widget.api,
+              latitude: _userLocation!.latitude,
+              longitude: _userLocation!.longitude,
+              onJoinSpace: _onJoinSpace,
+              onCreateSpace: _onCreateSpace,
+              onChangeLocation: _onChangeLocation,
+              onLogout: _onLogout,
+            )
+          : MySpacesScreen(
+              api: widget.api,
+              onOpenSpace: _onJoinSpace,
+            ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            _screen = index == 0 ? AppScreen.discovery : AppScreen.mySpaces;
+          });
+        },
+        backgroundColor: const Color(0xFF0F0F12),
+        indicatorColor: SpaceColors.accent.withValues(alpha: 0.18),
+        height: 68,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.radar_rounded, color: SpaceColors.disabled),
+            selectedIcon: Icon(Icons.radar_rounded, color: SpaceColors.accent),
+            label: 'Discover',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.forum_rounded, color: SpaceColors.disabled),
+            selectedIcon: Icon(Icons.forum_rounded, color: SpaceColors.accent),
+            label: 'My Spaces',
+          ),
+        ],
+      ),
+    );
+  }
+
   void _onLocationSelected(GeoPoint point) {
     setState(() {
       _userLocation = point;
@@ -276,7 +314,7 @@ class _SpaceShellState extends State<SpaceShell> {
     });
   }
 
-  Future<void> _onJoinSpace(Space space) async {
+  Future<bool> _onJoinSpace(Space space) async {
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -299,14 +337,20 @@ class _SpaceShellState extends State<SpaceShell> {
       });
 
       _startGeofenceMonitoring();
+      return true;
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not join: ${e.toString()}'),
-          backgroundColor: SpaceColors.card,
-        ),
-      );
+      if (mounted) {
+        final message = e is ApiException && e.statusCode == 403
+            ? 'You need to be inside the space area to join it'
+            : 'Could not join: ${e.toString()}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: SpaceColors.card,
+          ),
+        );
+      }
+      return false;
     }
   }
 
@@ -590,14 +634,16 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
   }
 }
 
-class _ChatScreen extends StatefulWidget {
-  const _ChatScreen({
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({
+    super.key,
     required this.space,
     required this.sessionId,
     required this.anonymousName,
     required this.api,
     required this.onExited,
     required this.onLeave,
+    this.socket,
   });
 
   final Space space;
@@ -606,26 +652,77 @@ class _ChatScreen extends StatefulWidget {
   final ApiService api;
   final VoidCallback onExited;
   final VoidCallback onLeave;
+  final ChatSocket? socket;
 
   @override
-  State<_ChatScreen> createState() => _ChatScreenState();
+  State<ChatScreen> createState() => ChatScreenState();
 }
 
-class _ChatScreenState extends State<_ChatScreen> {
+class ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _messages = <ChatMessage>[];
+  final _messageIds = <String>{};
   bool _loadingMessages = true;
+  ChatMessage? _replyingTo;
+  late final ChatSocket _socket;
 
   @override
   void initState() {
     super.initState();
+    _socket = widget.socket ??
+        ChatSocket(
+          baseUrl: widget.api.client.baseUrl,
+          getAccessToken: () => widget.api.client.accessToken ?? '',
+          spaceId: widget.space.id,
+        );
+    _socket.events.listen(_onWsEvent, onError: (_) {});
     _loadMessages();
+    _socket.connect();
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    if (widget.socket == null) _socket.dispose();
     super.dispose();
+  }
+
+  void _onWsEvent(WsEvent event) {
+    switch (event) {
+      case WsMessageEvent(:final message):
+        _onIncomingMessage(message);
+      case WsReactionEvent(:final messageId, :final emoji, :final count):
+        _onReaction(messageId, emoji, count);
+    }
+  }
+
+  void _onIncomingMessage(MessageData message) {
+    if (!mounted || _messageIds.contains(message.id)) return;
+    _messageIds.add(message.id);
+    setState(() {
+      _messages.add(ChatMessage(
+        id: message.id,
+        name: message.anonymousId,
+        text: message.content,
+        replyTo: message.replyTo,
+        replyText: message.replyContent,
+        color: SpaceColors.accent,
+        reactions: message.reactions.fold<Map<String, int>>(
+          {},
+          (map, r) => map..[r.emoji] = r.count,
+        ),
+      ));
+    });
+  }
+
+  void _onReaction(String messageId, String emoji, int count) {
+    if (!mounted) return;
+    for (final message in _messages) {
+      if (message.id == messageId) {
+        setState(() => message.reactions[emoji] = count);
+        return;
+      }
+    }
   }
 
   Future<void> _loadMessages() async {
@@ -633,12 +730,22 @@ class _ChatScreenState extends State<_ChatScreen> {
       final msgs = await widget.api.getMessages(widget.space.id);
       if (!mounted) return;
       setState(() {
-        _messages.addAll(msgs.map((m) => ChatMessage(
+        for (final m in msgs) {
+          if (_messageIds.add(m.id)) {
+            _messages.add(ChatMessage(
+              id: m.id,
               name: m.anonymousId,
               text: m.content,
+              replyTo: m.replyTo,
+              replyText: m.replyContent,
               color: SpaceColors.accent,
-              reactions: 0,
-            )));
+              reactions: m.reactions.fold<Map<String, int>>(
+                {},
+                (map, r) => map..[r.emoji] = r.count,
+              ),
+            ));
+          }
+        }
         _loadingMessages = false;
       });
     } catch (_) {
@@ -649,24 +756,88 @@ class _ChatScreenState extends State<_ChatScreen> {
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-
-    setState(() {
-      _messages.add(ChatMessage(
-        name: widget.anonymousName,
-        text: text,
-        color: SpaceColors.accent,
-        reactions: 0,
-      ));
-      _controller.clear();
-    });
+    final replyTo = _replyingTo;
+    _controller.clear();
+    setState(() => _replyingTo = null);
 
     try {
-      await widget.api.sendMessage(
+      final saved = await widget.api.sendMessage(
         widget.space.id,
         widget.sessionId,
         text,
+        replyTo: replyTo?.id,
       );
+      _onIncomingMessage(saved);
+    } catch (_) {
+      if (mounted && replyTo != null) setState(() => _replyingTo = replyTo);
+    }
+  }
+
+  void _startReply(ChatMessage message) {
+    setState(() => _replyingTo = message);
+  }
+
+  Future<void> _addReaction(ChatMessage message, String emoji) async {
+    try {
+      await widget.api.reactToMessage(message.id, widget.sessionId, emoji);
     } catch (_) {}
+  }
+
+  void _showMessageActions(ChatMessage message) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: SpaceColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message.text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: SpaceColors.secondary,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    for (final emoji in _reactionEmojis)
+                      _ReactionButton(
+                        emoji: emoji,
+                        onTap: () {
+                          Navigator.of(sheetContext).pop();
+                          _addReaction(message, emoji);
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.reply_rounded,
+                      color: SpaceColors.secondary),
+                  title: const Text('Reply'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _startReply(message);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -768,13 +939,19 @@ class _ChatScreenState extends State<_ChatScreen> {
                         padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
                         itemCount: _messages.length,
                         itemBuilder: (context, index) {
-                          return MessageCard(message: _messages[index]);
+                          final message = _messages[index];
+                          return MessageCard(
+                            message: message,
+                            onLongPress: () => _showMessageActions(message),
+                          );
                         },
                       ),
           ),
           ChatComposer(
             controller: _controller,
             onSend: _sendMessage,
+            replyingTo: _replyingTo,
+            onCancelReply: () => setState(() => _replyingTo = null),
           ),
         ],
       ),
@@ -798,7 +975,7 @@ class SpaceDiscoveryScreen extends StatefulWidget {
   final ApiService api;
   final double latitude;
   final double longitude;
-  final ValueChanged<Space> onJoinSpace;
+  final Future<bool> Function(Space) onJoinSpace;
   final VoidCallback onCreateSpace;
   final VoidCallback onChangeLocation;
   final VoidCallback onLogout;
@@ -811,6 +988,7 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
   List<SpaceData> _spaces = [];
   bool _loading = true;
   String? _error;
+  String? _joiningId;
 
   @override
   void initState() {
@@ -840,6 +1018,24 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
         _loading = false;
       });
     }
+  }
+
+  Space _toSpace(SpaceData data) => Space(
+        id: data.id,
+        name: data.name,
+        visibility: data.visibility,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        radiusMeters: data.radiusMeters,
+        createdAt: DateTime.now(),
+      );
+
+  Future<void> _join(SpaceData data) async {
+    if (_joiningId != null) return;
+    setState(() => _joiningId = data.id);
+    final ok = await widget.onJoinSpace(_toSpace(data));
+    if (mounted) setState(() => _joiningId = null);
+    if (ok && mounted) _discover();
   }
 
   @override
@@ -961,16 +1157,9 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                       distance: space.distanceMeters,
                       memberCount: space.memberCount,
                       joined: space.joined,
-                      onTap: space.joined
-                          ? () => widget.onJoinSpace(Space(
-                                id: space.id,
-                                name: space.name,
-                                visibility: space.visibility,
-                                latitude: space.latitude,
-                                longitude: space.longitude,
-                                radiusMeters: space.radiusMeters,
-                                createdAt: DateTime.now(),
-                              ))
+                      loading: _joiningId == space.id,
+                      onTap: _joiningId == null
+                          ? () => _join(space)
                           : null,
                     );
                   },
@@ -983,6 +1172,194 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                   label: 'Create a Space',
                   icon: Icons.add_rounded,
                   onPressed: widget.onCreateSpace,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// API-backed My Spaces screen
+class MySpacesScreen extends StatefulWidget {
+  const MySpacesScreen({
+    super.key,
+    required this.api,
+    required this.onOpenSpace,
+  });
+
+  final ApiService api;
+  final Future<bool> Function(Space) onOpenSpace;
+
+  @override
+  State<MySpacesScreen> createState() => _MySpacesScreenState();
+}
+
+class _MySpacesScreenState extends State<MySpacesScreen> {
+  List<SpaceData> _spaces = [];
+  bool _loading = true;
+  String? _error;
+  String? _openingId;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final spaces = await widget.api.joinedSpaces();
+      if (!mounted) return;
+      setState(() {
+        _spaces = spaces;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Space _toSpace(SpaceData data) => Space(
+        id: data.id,
+        name: data.name,
+        visibility: data.visibility,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        radiusMeters: data.radiusMeters,
+        createdAt: DateTime.now(),
+      );
+
+  Future<void> _open(SpaceData data) async {
+    if (_openingId != null) return;
+    setState(() => _openingId = data.id);
+    final ok = await widget.onOpenSpace(_toSpace(data));
+    if (mounted) setState(() => _openingId = null);
+    if (ok && mounted) _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SpaceScaffold(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'My Spaces',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Spaces you are in',
+                          style: TextStyle(
+                            color: SpaceColors.secondary,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh_rounded,
+                        color: SpaceColors.secondary),
+                  ),
+                ],
+              ),
+            ),
+            if (_loading)
+              const Expanded(
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_error!,
+                            style: const TextStyle(
+                                color: SpaceColors.secondary)),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else if (_spaces.isEmpty)
+              const Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.forum_outlined,
+                            size: 48, color: SpaceColors.disabled),
+                        SizedBox(height: 16),
+                        Text(
+                          'You are not in any Spaces',
+                          style: TextStyle(
+                            color: SpaceColors.secondary,
+                            fontSize: 16,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Join one from the Discover tab',
+                          style: TextStyle(
+                            color: SpaceColors.disabled,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+                  itemCount: _spaces.length,
+                  itemBuilder: (context, index) {
+                    final space = _spaces[index];
+                    return _SpaceCard(
+                      name: space.name,
+                      memberCount: space.memberCount,
+                      joined: true,
+                      loading: _openingId == space.id,
+                      onTap: _openingId == null
+                          ? () => _open(space)
+                          : null,
+                    );
+                  },
                 ),
               ),
           ],
@@ -1026,9 +1403,10 @@ class _SpaceButton extends StatelessWidget {
 class _SpaceCard extends StatelessWidget {
   const _SpaceCard({
     required this.name,
-    required this.distance,
+    this.distance = 0,
     this.memberCount = 0,
     this.joined = false,
+    this.loading = false,
     this.onTap,
   });
 
@@ -1036,6 +1414,7 @@ class _SpaceCard extends StatelessWidget {
   final double distance;
   final int memberCount;
   final bool joined;
+  final bool loading;
   final VoidCallback? onTap;
 
   @override
@@ -1093,16 +1472,18 @@ class _SpaceCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.near_me_rounded,
-                            size: 12, color: SpaceColors.secondary),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${distance.toStringAsFixed(0)}m',
-                          style: const TextStyle(
-                            color: SpaceColors.secondary,
-                            fontSize: 12,
+                        if (distance > 0) ...[
+                          Icon(Icons.near_me_rounded,
+                              size: 12, color: SpaceColors.secondary),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${distance.toStringAsFixed(0)}m',
+                            style: const TextStyle(
+                              color: SpaceColors.secondary,
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
+                        ],
                         if (memberCount > 0) ...[
                           const SizedBox(width: 12),
                           Icon(Icons.people_outline_rounded,
@@ -1138,6 +1519,15 @@ class _SpaceCard extends StatelessWidget {
                     ),
                   ),
                 )
+              else if (loading)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: SpaceColors.accent,
+                  ),
+                )
               else
                 const Icon(Icons.chevron_right_rounded,
                     color: SpaceColors.disabled),
@@ -1155,10 +1545,14 @@ class ChatComposer extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onSend,
+    this.replyingTo,
+    this.onCancelReply,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
+  final ChatMessage? replyingTo;
+  final VoidCallback? onCancelReply;
 
   @override
   Widget build(BuildContext context) {
@@ -1173,33 +1567,79 @@ class ChatComposer extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  minLines: 1,
-                  maxLines: 4,
-                  style: const TextStyle(fontSize: 15),
-                  decoration: const InputDecoration(
-                    hintText: 'Message...',
-                    hintStyle: TextStyle(color: SpaceColors.disabled),
-                    border: InputBorder.none,
+              if (replyingTo != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: SpaceColors.card,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
                   ),
-                  onSubmitted: (_) => onSend(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                onPressed: onSend,
-                style: IconButton.styleFrom(
-                  backgroundColor: SpaceColors.accent,
-                  foregroundColor: SpaceColors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(17),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.reply_rounded,
+                          size: 14, color: SpaceColors.secondary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Replying to ${replyingTo!.name}: '
+                          '${replyingTo!.text}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: SpaceColors.secondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      if (onCancelReply != null)
+                        GestureDetector(
+                          onTap: onCancelReply,
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 16,
+                            color: SpaceColors.disabled,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                icon: const Icon(Icons.arrow_forward_rounded),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      minLines: 1,
+                      maxLines: 4,
+                      style: const TextStyle(fontSize: 15),
+                      decoration: const InputDecoration(
+                        hintText: 'Message...',
+                        hintStyle: TextStyle(color: SpaceColors.disabled),
+                        border: InputBorder.none,
+                      ),
+                      onSubmitted: (_) => onSend(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: onSend,
+                    style: IconButton.styleFrom(
+                      backgroundColor: SpaceColors.accent,
+                      foregroundColor: SpaceColors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(17),
+                      ),
+                    ),
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1210,47 +1650,116 @@ class ChatComposer extends StatelessWidget {
 }
 
 class MessageCard extends StatelessWidget {
-  const MessageCard({super.key, required this.message});
+  const MessageCard({
+    super.key,
+    required this.message,
+    this.onLongPress,
+  });
 
   final ChatMessage message;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: SpaceColors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              StatusDot(color: message.color),
-              const SizedBox(width: 9),
-              Text(
-                message.name,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: SpaceColors.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                StatusDot(color: message.color),
+                const SizedBox(width: 9),
+                Text(
+                  message.name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            if (message.replyText != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: SpaceColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.05),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.reply_rounded,
+                        size: 13, color: SpaceColors.secondary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${message.replyText}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: SpaceColors.secondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            message.text,
-            style: const TextStyle(
-              fontSize: 16,
-              height: 1.35,
-              color: SpaceColors.white,
+            const SizedBox(height: 12),
+            Text(
+              message.text,
+              style: const TextStyle(
+                fontSize: 16,
+                height: 1.35,
+                color: SpaceColors.white,
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-        ],
+            if (message.reactions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final entry in message.reactions.entries)
+                    if (entry.value > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: SpaceColors.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.05),
+                          ),
+                        ),
+                        child: Text(
+                          '${entry.key} ${entry.value}',
+                          style: const TextStyle(
+                            color: SpaceColors.secondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
+          ],
+        ),
       ),
     );
   }
@@ -1493,16 +2002,22 @@ class SpaceScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment.topRight,
-          radius: 1.2,
-          colors: [Color(0xFF13211F), SpaceColors.black],
-          stops: [0, 0.58],
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.topRight,
+            radius: 1.2,
+            colors: [Color(0xFF13211F), SpaceColors.black],
+            stops: [0, 0.58],
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: child,
         ),
       ),
-      child: child,
     );
   }
 }
@@ -1550,16 +2065,47 @@ class Space {
 
 class ChatMessage {
   const ChatMessage({
+    required this.id,
     required this.name,
     required this.text,
     required this.color,
     required this.reactions,
+    this.replyTo,
+    this.replyText,
   });
 
+  final String id;
   final String name;
   final String text;
   final Color color;
-  final int reactions;
+  final String? replyTo;
+  final String? replyText;
+  final Map<String, int> reactions;
+}
+
+const _reactionEmojis = ['👍', '❤️', '😄', '😂', '🔥', '🎉'];
+
+class _ReactionButton extends StatelessWidget {
+  const _ReactionButton({required this.emoji, required this.onTap});
+
+  final String emoji;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: SpaceColors.card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Text(emoji, style: const TextStyle(fontSize: 20)),
+      ),
+    );
+  }
 }
 
 class SpaceColors {

@@ -1,7 +1,14 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sqlx::types::Json;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct ReactionSummary {
+    pub emoji: String,
+    pub count: i64,
+}
 
 #[derive(Serialize, sqlx::FromRow, ToSchema)]
 pub struct Space {
@@ -31,6 +38,12 @@ pub struct Message {
     pub anonymous_id: String,
     pub content: String,
     pub reply_to: Option<Uuid>,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub reply_content: Option<String>,
     pub created_at: DateTime<Utc>,
     pub moderation_status: String,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub reactions: Json<Vec<ReactionSummary>>,
 }

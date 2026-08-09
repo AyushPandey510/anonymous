@@ -7,6 +7,7 @@ pub struct Config {
     pub bind_addr: String,
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
+    pub session_ttl: Duration,
     pub session_grace: Duration,
     pub geofence_check_interval: Duration,
 }
@@ -21,6 +22,7 @@ impl Config {
             refresh_token_ttl: Duration::from_secs(
                 env_u64("REFRESH_TOKEN_DAYS", 30) * 24 * 60 * 60,
             ),
+            session_ttl: Duration::from_secs(env_u64("SESSION_TTL_HOURS", 2) * 3600),
             session_grace: Duration::from_secs(env_u64("SESSION_GRACE_SECONDS", 120)),
             geofence_check_interval: Duration::from_secs(env_u64("GEOFENCE_CHECK_INTERVAL_SECONDS", 30)),
         })
