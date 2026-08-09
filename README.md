@@ -32,7 +32,8 @@ All via environment variables (see `.env.example`):
 | `BIND_ADDR` | `0.0.0.0:8080` | HTTP listen address |
 | `ACCESS_TOKEN_MINUTES` | `60` | JWT access token TTL |
 | `REFRESH_TOKEN_DAYS` | `30` | Refresh token TTL |
-| `SESSION_GRACE_SECONDS` | `120` | Grace period before session expiry |
+| `SESSION_TTL_HOURS` | `2` | Active session lifetime while inside a space |
+| `SESSION_GRACE_SECONDS` | `120` | Grace period after leaving before session expiry |
 | `GEOFENCE_CHECK_INTERVAL_SECONDS` | `30` | Background geofence sweep interval |
 
 ### Run
@@ -100,7 +101,7 @@ Two schemas:
 | `POST` | `/messages/{id}/report` | Yes | Report a message |
 | `POST` | `/messages/{id}/delete` | Yes | Soft-delete own message (within 15 min) |
 | `POST` | `/messages/{id}/react` | Yes | React with emoji |
-| `GET` | `/ws/spaces/{id}` | Yes | WebSocket (placeholder) |
+| `GET` | `/ws/spaces/{id}` | Yes | WebSocket: real-time `message` + `reaction` events |
 
 #### Geofence
 
@@ -128,6 +129,7 @@ Sophisticated location validation pipeline:
 6. **Distance classification** — inside, near-boundary, outside
 7. **Hysteresis buffering** — 20m exit buffer, requires 3 consecutive outside readings
 8. **Lifecycle state machine** — Joining → Inside → NearBoundary → GracePeriod → Outside → Expired
+9. **Effective state reporting** — after each validation the session's real status is checked; once grace has elapsed the API returns `expired` / `can_participate: false`, so clients can auto-exit
 
 **Decision values:** `inside`, `near_boundary`, `outside`, `low_accuracy`, `rejected`
 
@@ -143,7 +145,7 @@ Sophisticated location validation pipeline:
 ### Background Worker
 
 - Session expiry sweeper runs every `GEOFENCE_CHECK_INTERVAL_SECONDS` (default 30s)
-- Expires sessions past `expires_at`
+- Expires sessions past `expires_at` (both `active` TTL expiry and `grace` period expiry)
 
 ### Error Handling
 
@@ -176,6 +178,7 @@ Sophisticated location validation pipeline:
 | Maps | flutter_map + OpenStreetMap tiles |
 | Location | geolocator (GPS) |
 | HTTP | http package with JWT auto-refresh |
+| Realtime | web_socket_channel |
 | Persistence | SharedPreferences |
 | Geofence | Client-side validation engine matching backend logic |
 
@@ -207,7 +210,7 @@ Sophisticated location validation pipeline:
 - Discovers nearby public spaces via API
 - States: loading, error (with retry), empty (with "Create a Space"), populated
 - Space cards: name, distance, member count, joined badge
-- Tap joined space to enter chat
+- Tap a space to join (or re-join) and enter chat
 - "Create a Space" button
 - Change location / logout in header
 
@@ -219,13 +222,22 @@ Sophisticated location validation pipeline:
 - "Create Space" button with loading state
 - Auto-joins the creator after creation
 
-#### 5. ChatScreen
+#### 5. My Spaces (tab)
+
+- Bottom navigation: Discover / My Spaces
+- Lists spaces you've joined (`/me/joined-spaces` — active sessions)
+- Tap a space to re-join and open chat
+- States: loading, error (with retry), empty, populated
+
+#### 6. ChatScreen
 
 - Header: space name, anonymous name, leave button
 - Message history with loading/empty states
-- Message cards: colored dot, anonymous name, text
-- Chat composer: text input + send button (submit-on-enter)
-- Optimistic UI for sent messages
+- Message cards: colored dot, anonymous name, text, reply quote, reaction chips
+- Long-press a message → actions sheet (Reply, 6 emoji reactions)
+- Reply composer with "Replying to…" banner and cancel
+- Real-time messages via WebSocket (auto-reconnect with backoff, typed events)
+- Reaction counts update live over the socket
 - 30-second geofence exit polling
 - Alert dialog on geofence exit → auto-leave space
 
@@ -237,10 +249,13 @@ Sophisticated location validation pipeline:
 | `POST` | `/auth/refresh` | Token refresh on 401 |
 | `GET` | `/spaces/discover` | Discover nearby spaces |
 | `POST` | `/spaces` | Create a space |
-| `POST` | `/spaces/{id}/join` | Join a space |
+| `POST` | `/spaces/{id}/join` | Join (or re-join) a space |
 | `POST` | `/spaces/{id}/leave` | Leave a space |
+| `GET` | `/me/joined-spaces` | My Spaces tab |
 | `GET` | `/spaces/{id}/messages` | Get chat messages |
-| `POST` | `/spaces/{id}/messages` | Send a message |
+| `POST` | `/spaces/{id}/messages` | Send a message (optional `reply_to`) |
+| `POST` | `/messages/{id}/react` | React to a message |
+| `GET` | `/ws/spaces/{id}` | Real-time chat + reactions |
 | `POST` | `/geofence/validate` | Geofence exit monitoring |
 
 ### Geofence Validation Engine
@@ -275,8 +290,9 @@ Radial gradient background (`#13211F` → `#0B0B0C`) on all screens. Inter font 
 
 1. First launch: generate UUID v4 device ID → `POST /auth/register` → store JWT tokens
 2. Subsequent launches: load from SharedPreferences → verify connectivity
-3. On 401: auto-refresh via `/auth/refresh` → retry original request
-4. Logout: clear persisted tokens
+3. On 401 (any request, including list calls): auto-refresh via `/auth/refresh` → retry original request
+4. Chat socket reads the token fresh on every (re)connect, so it uses the refreshed token
+5. Logout: clear persisted tokens
 
 ### Persistence (SharedPreferences)
 
@@ -286,15 +302,16 @@ Radial gradient background (`#13211F` → `#0B0B0C`) on all screens. Inter font 
 
 ### Tests
 
-- Widget smoke test (SpaceApp renders)
-- Geofence validator (8 tests): inside, boundary, low accuracy, impossible jump, outside buffering (3 consecutive), grace period, mock location, excessive speed
+- Widget tests (17): app renders, discovery/join, chat over WebSocket, long-press reactions, replies (incl. failure restore), My Spaces list/open/empty
+- API client tests: `getList` auto-refresh on 401 and retry, 401 when refresh rejected
+- Geofence validator: inside, boundary, low accuracy, impossible jump, outside buffering (3 consecutive), grace period, mock location, excessive speed
 
-### Not Yet Wired Up
+### WebSocket Events
 
-- WebSocket real-time chat (dependency exists, WS URL builder exists, but not consumed)
-- `mySpaces()` and `joinedSpaces()` API methods (not called from UI)
-- Message reply UI (`replyTo` in model and API, no UI)
-- Message reactions (field exists, always 0)
+| Type | Payload | Description |
+|---|---|---|
+| `message` | `{ id, space_id, anonymous_id, content, reply_to, reply_content, created_at, reactions[] }` | New chat message |
+| `reaction` | `{ message_id, emoji, count }` | Reaction count update |
 
 ---
 
