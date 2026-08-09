@@ -234,7 +234,9 @@ Sophisticated location validation pipeline:
 - Header: space name, anonymous name, leave button
 - Message history with loading/empty states
 - Message cards: colored dot, anonymous name, text, reply quote, reaction chips
-- Long-press a message → actions sheet (Reply, 6 emoji reactions)
+- Long-press a message → actions sheet (Reply, 6 emoji reactions, Delete on your own messages, Report)
+- Delete own message: confirm dialog, removes it everywhere; only within 15 min of sending (backend-enforced 403 otherwise)
+- Report a message: reason picker (Spam, Harassment, Hate speech, Inappropriate content, Other)
 - Reply composer with "Replying to…" banner and cancel
 - Real-time messages via WebSocket (auto-reconnect with backoff, typed events)
 - Reaction counts update live over the socket
@@ -255,6 +257,8 @@ Sophisticated location validation pipeline:
 | `GET` | `/spaces/{id}/messages` | Get chat messages |
 | `POST` | `/spaces/{id}/messages` | Send a message (optional `reply_to`) |
 | `POST` | `/messages/{id}/react` | React to a message |
+| `POST` | `/messages/{id}/delete` | Soft-delete own message |
+| `POST` | `/messages/{id}/report` | Report a message (reason) |
 | `GET` | `/ws/spaces/{id}` | Real-time chat + reactions |
 | `POST` | `/geofence/validate` | Geofence exit monitoring |
 
@@ -302,7 +306,7 @@ Radial gradient background (`#13211F` → `#0B0B0C`) on all screens. Inter font 
 
 ### Tests
 
-- Widget tests (17): app renders, discovery/join, chat over WebSocket, long-press reactions, replies (incl. failure restore), My Spaces list/open/empty
+- Widget tests (19): app renders, discovery/join, chat over WebSocket, long-press reactions, replies (incl. failure restore), delete own message flow, report message flow, My Spaces list/open/empty
 - API client tests: `getList` auto-refresh on 401 and retry, 401 when refresh rejected
 - Geofence validator: inside, boundary, low accuracy, impossible jump, outside buffering (3 consecutive), grace period, mock location, excessive speed
 
