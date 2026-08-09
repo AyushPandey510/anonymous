@@ -832,12 +832,138 @@ class ChatScreenState extends State<ChatScreen> {
                     _startReply(message);
                   },
                 ),
+                if (message.name == widget.anonymousName)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.delete_outline_rounded,
+                        color: Color(0xFFE57373)),
+                    title: const Text('Delete',
+                        style: TextStyle(color: Color(0xFFE57373))),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _confirmDelete(message);
+                    },
+                  ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.flag_outlined,
+                      color: SpaceColors.secondary),
+                  title: const Text('Report'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _showReportOptions(message);
+                  },
+                ),
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  Future<void> _confirmDelete(ChatMessage message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: SpaceColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        title: const Text('Delete message?',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        content: const Text(
+          'This removes the message for everyone. Available within 15 minutes of sending.',
+          style: TextStyle(color: SpaceColors.secondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE57373),
+              foregroundColor: SpaceColors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await widget.api.deleteMessage(message.id);
+      if (!mounted) return;
+      setState(() {
+        _messages.remove(message);
+        _messageIds.remove(message.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Message deleted'),
+          backgroundColor: SpaceColors.card,
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      final messageText = e.statusCode == 403
+          ? 'Only your own messages can be deleted'
+          : 'Could not delete message';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(messageText), backgroundColor: SpaceColors.card),
+      );
+    }
+  }
+
+  void _showReportOptions(ChatMessage message) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        backgroundColor: SpaceColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        title: const Text('Report message',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        children: [
+          for (final reason in _reportReasons)
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _sendReport(message, reason);
+              },
+              child: Text(reason),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendReport(ChatMessage message, String reason) async {
+    try {
+      await widget.api.reportMessage(message.id, reason);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Thanks, report submitted'),
+          backgroundColor: SpaceColors.card,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not submit report'),
+          backgroundColor: SpaceColors.card,
+        ),
+      );
+    }
   }
 
   @override
@@ -2084,6 +2210,14 @@ class ChatMessage {
 }
 
 const _reactionEmojis = ['👍', '❤️', '😄', '😂', '🔥', '🎉'];
+
+const _reportReasons = [
+  'Spam',
+  'Harassment',
+  'Hate speech',
+  'Inappropriate content',
+  'Other',
+];
 
 class _ReactionButton extends StatelessWidget {
   const _ReactionButton({required this.emoji, required this.onTap});

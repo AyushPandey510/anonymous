@@ -225,6 +225,16 @@ class ApiService {
     });
   }
 
+  Future<void> deleteMessage(String messageId) async {
+    await client.post('/messages/$messageId/delete');
+  }
+
+  Future<void> reportMessage(String messageId, String reason) async {
+    await client.post('/messages/$messageId/report', body: {
+      'reason': reason,
+    });
+  }
+
   // Geofence
   Future<GeofenceValidationData> validateLocation({
     required String spaceId,

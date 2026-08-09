@@ -450,4 +450,173 @@ void main() {
 
     expect(find.text('You are not in any Spaces'), findsOneWidget);
   });
+
+  testWidgets('Delete own message via long-press flow', (tester) async {
+    final incoming = StreamController<WsEvent>.broadcast();
+    var deleteCalled = false;
+    final mock = MockClient((request) async {
+      if (request.url.path.endsWith('/messages')) {
+        if (request.method == 'GET') {
+          return http.Response('[]', 200,
+              headers: {'content-type': 'application/json'});
+        }
+        return http.Response(
+          jsonEncode({
+            'id': 'm9',
+            'space_id': 'space-1',
+            'anonymous_id': 'anon-me',
+            'content': 'x',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path == '/messages/m1/delete') {
+        deleteCalled = true;
+        return http.Response(
+          jsonEncode({'status': 'deleted'}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('not found', 404);
+    });
+
+    final api = ApiService(ApiClient('http://test', client: mock));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          space: Space(
+            id: 'space-1',
+            name: 'Test Space',
+            visibility: 'public',
+            latitude: 12.97,
+            longitude: 77.59,
+            radiusMeters: 100,
+            createdAt: DateTime.utc(2026),
+          ),
+          sessionId: 'session-1',
+          anonymousName: 'anon-me',
+          api: api,
+          onExited: () {},
+          onLeave: () {},
+          socket: _FakeChatSocket(incoming),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    incoming.add(WsMessageEvent(MessageData(
+      id: 'm1',
+      anonymousId: 'anon-me',
+      content: 'my own message',
+      createdAt: '2026-01-01T00:00:00Z',
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.longPress(find.text('my own message'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsOneWidget);
+
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete message?'), findsOneWidget);
+
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(deleteCalled, isTrue);
+    expect(find.text('my own message'), findsNothing);
+    expect(find.text('Message deleted'), findsOneWidget);
+    await incoming.close();
+  });
+
+  testWidgets('Report a message via long-press flow', (tester) async {
+    final incoming = StreamController<WsEvent>.broadcast();
+    String? reportedReason;
+    final mock = MockClient((request) async {
+      if (request.url.path.endsWith('/messages')) {
+        if (request.method == 'GET') {
+          return http.Response('[]', 200,
+              headers: {'content-type': 'application/json'});
+        }
+        return http.Response(
+          jsonEncode({
+            'id': 'm9',
+            'space_id': 'space-1',
+            'anonymous_id': 'anon-me',
+            'content': 'x',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path == '/messages/m1/report') {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        reportedReason = body['reason'] as String?;
+        return http.Response(
+          jsonEncode({'id': 'r1', 'status': 'pending'}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('not found', 404);
+    });
+
+    final api = ApiService(ApiClient('http://test', client: mock));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          space: Space(
+            id: 'space-1',
+            name: 'Test Space',
+            visibility: 'public',
+            latitude: 12.97,
+            longitude: 77.59,
+            radiusMeters: 100,
+            createdAt: DateTime.utc(2026),
+          ),
+          sessionId: 'session-1',
+          anonymousName: 'anon-me',
+          api: api,
+          onExited: () {},
+          onLeave: () {},
+          socket: _FakeChatSocket(incoming),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    incoming.add(WsMessageEvent(MessageData(
+      id: 'm1',
+      anonymousId: 'anon-2',
+      content: 'offensive message',
+      createdAt: '2026-01-01T00:00:00Z',
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.longPress(find.text('offensive message'));
+    await tester.pumpAndSettle();
+    expect(find.text('Report'), findsOneWidget);
+    expect(find.text('Delete'), findsNothing);
+
+    await tester.tap(find.text('Report'));
+    await tester.pumpAndSettle();
+    expect(find.text('Report message'), findsOneWidget);
+
+    await tester.tap(find.text('Spam'));
+    await tester.pumpAndSettle();
+
+    expect(reportedReason, 'Spam');
+    expect(find.text('Thanks, report submitted'), findsOneWidget);
+    await incoming.close();
+  });
 }
