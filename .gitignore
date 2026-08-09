@@ -23,6 +23,16 @@ Thumbs.db
 # Flutter / Dart
 **/doc/api/
 **/ios/Flutter/.last_build_id
+**/android/.gradle/
+**/android/local.properties
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+**/ios/Pods/
+**/ios/.symlinks/
+**/macos/Build/
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
@@ -30,16 +40,6 @@ Thumbs.db
 .pub/
 build/
 coverage/
-android/.gradle/
-android/local.properties
-android/app/debug
-android/app/profile
-android/app/release
-ios/Pods/
-ios/.symlinks/
-macos/Build/
-windows/flutter/ephemeral/
-linux/flutter/ephemeral/
 
 # Rust
 /target/
@@ -49,9 +49,9 @@ linux/flutter/ephemeral/
 
 # Node / frontend
 node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/.next/
+apps/frontend/node_modules/
+apps/frontend/dist/
+apps/frontend/.next/
 
 # Logs and temp files
 *.log

@@ -23,7 +23,7 @@ Anonymous location-aware communication app.
 
 ### Configuration
 
-All via environment variables (see `.env.example`):
+All via environment variables (see `apps/backend/.env.example`):
 
 | Variable | Default | Description |
 |---|---|---|
@@ -39,13 +39,14 @@ All via environment variables (see `.env.example`):
 ### Run
 
 ```bash
-cp .env.example .env
+cp apps/backend/.env.example .env
 docker compose up -d
+cd apps/backend
 sqlx migrate run
 cargo run
 ```
 
-OpenAPI docs at `http://localhost:8080/docs`. Postgres published on host port `55432`.
+OpenAPI docs at `http://localhost:8080/docs`. Postgres published on host port `55432`. The Flutter app lives in `apps/frontend/`; from the repo root use the wrapper: `.\flutter-frontend.ps1 run -d chrome` (or run `flutter` directly from `apps/frontend/`).
 
 ### Database Schema
 

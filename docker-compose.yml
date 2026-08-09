@@ -19,7 +19,7 @@ services:
     image: redis:7-alpine
 
   backend:
-    build: .
+    build: ./apps/backend
     ports:
       - "8080:8080"
     env_file: .env
