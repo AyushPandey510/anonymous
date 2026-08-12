@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../theme.dart';
 import '../data/location_service.dart';
 import '../data/place_search_repository.dart';
 import '../domain/geofence_validator.dart';
@@ -65,16 +66,18 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final point = _latLng(widget.point);
-    final decisionColor = _decisionColor(widget.validation.decision);
+    final decisionColor = _decisionColor(colors, widget.validation.decision);
 
     return Container(
       height: 360,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: _MapColors.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: colors.outline),
       ),
       child: Stack(
         children: [
@@ -98,7 +101,7 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.space.space_mobile',
-                tileBuilder: _darkTileBuilder,
+                tileBuilder: isDark ? _darkTileBuilder : null,
               ),
               CircleLayer(
                 circles: [
@@ -118,9 +121,9 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
                     point: point,
                     width: 56,
                     height: 56,
-                    child: const Icon(
+                    child: Icon(
                       Icons.location_pin,
-                      color: _MapColors.accent,
+                      color: colors.accent,
                       size: 46,
                     ),
                   ),
@@ -131,7 +134,7 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
                   TextSourceAttribution(
                     'OpenStreetMap',
                     textStyle: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.55),
+                      color: colors.secondaryText.withValues(alpha: 0.7),
                       fontSize: 10,
                     ),
                   ),
@@ -215,26 +218,10 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
   ) {
     return ColorFiltered(
       colorFilter: const ColorFilter.matrix([
-        -0.55,
-        0,
-        0,
-        0,
-        150,
-        0,
-        -0.55,
-        0,
-        0,
-        150,
-        0,
-        0,
-        -0.55,
-        0,
-        150,
-        0,
-        0,
-        0,
-        1,
-        0,
+        -0.55, 0, 0, 0, 150,
+        0, -0.55, 0, 0, 150,
+        0, 0, -0.55, 0, 150,
+        0, 0, 0, 1, 0,
       ]),
       child: Opacity(opacity: 0.78, child: tileWidget),
     );
@@ -324,13 +311,13 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
     };
   }
 
-  Color _decisionColor(GeofenceDecision decision) {
+  Color _decisionColor(SpaceColors colors, GeofenceDecision decision) {
     return switch (decision) {
-      GeofenceDecision.inside => _MapColors.accent,
-      GeofenceDecision.nearBoundary => const Color(0xFFF4C35C),
-      GeofenceDecision.outside => const Color(0xFFFF6262),
-      GeofenceDecision.lowAccuracy => const Color(0xFFF4C35C),
-      GeofenceDecision.rejected => const Color(0xFFFF6262),
+      GeofenceDecision.inside => colors.accent,
+      GeofenceDecision.nearBoundary => colors.warning,
+      GeofenceDecision.outside => colors.dangerStrong,
+      GeofenceDecision.lowAccuracy => colors.warning,
+      GeofenceDecision.rejected => colors.dangerStrong,
     };
   }
 }
@@ -348,18 +335,20 @@ class _SearchBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 2, 10, 2),
       decoration: BoxDecoration(
-        color: _MapColors.black.withValues(alpha: 0.86),
+        color: colors.surface.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: colors.outline),
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.search_rounded,
-            color: _MapColors.secondary,
+            color: colors.secondaryText,
             size: 19,
           ),
           const SizedBox(width: 9),
@@ -367,19 +356,26 @@ class _SearchBox extends StatelessWidget {
             child: TextField(
               controller: controller,
               onChanged: onChanged,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              decoration: const InputDecoration(
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: colors.primaryText,
+              ),
+              decoration: InputDecoration(
                 hintText: 'Search address or paste coordinates',
-                hintStyle: TextStyle(color: _MapColors.disabled),
+                hintStyle: TextStyle(color: colors.disabled),
                 border: InputBorder.none,
               ),
             ),
           ),
           if (searching)
-            const SizedBox(
+            SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.accent,
+              ),
             ),
         ],
       ),
@@ -395,37 +391,43 @@ class _SearchResults extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
     return Container(
       constraints: const BoxConstraints(maxHeight: 180),
       decoration: BoxDecoration(
-        color: _MapColors.black.withValues(alpha: 0.92),
+        color: colors.surface.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: colors.outline),
       ),
       child: ListView.separated(
         shrinkWrap: true,
         padding: const EdgeInsets.symmetric(vertical: 6),
         itemCount: results.length,
         separatorBuilder: (_, _) =>
-            Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
+            Divider(color: colors.outlineSubtle, height: 1),
         itemBuilder: (context, index) {
           final result = results[index];
           return ListTile(
             dense: true,
-            leading: const Icon(
+            leading: Icon(
               Icons.place_outlined,
-              color: _MapColors.accent,
+              color: colors.accent,
               size: 19,
             ),
             title: Text(
               result.label,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: colors.primaryText,
+              ),
             ),
             subtitle: Text(
               '${result.point.latitude.toStringAsFixed(5)}, ${result.point.longitude.toStringAsFixed(5)}',
-              style: const TextStyle(color: _MapColors.disabled, fontSize: 11),
+              style: TextStyle(color: colors.disabled, fontSize: 11),
             ),
             onTap: () => onSelected(result),
           );
@@ -450,15 +452,16 @@ class _MapStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
     final text =
         status ??
         '${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)} • ${radiusMeters}m';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: _MapColors.black.withValues(alpha: 0.82),
+        color: colors.surface.withValues(alpha: 0.90),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: colors.outline),
       ),
       child: Row(
         children: [
@@ -467,8 +470,8 @@ class _MapStatus extends StatelessWidget {
                 ? Icons.verified_rounded
                 : Icons.info_outline_rounded,
             color: validation.canParticipate
-                ? _MapColors.accent
-                : const Color(0xFFF4C35C),
+                ? colors.accent
+                : colors.warning,
             size: 16,
           ),
           const SizedBox(width: 8),
@@ -477,7 +480,7 @@ class _MapStatus extends StatelessWidget {
               text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _MapColors.secondary, fontSize: 12),
+              style: TextStyle(color: colors.secondaryText, fontSize: 12),
             ),
           ),
         ],
@@ -499,30 +502,30 @@ class _MapIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
     return IconButton(
       onPressed: loading ? null : onTap,
       style: IconButton.styleFrom(
-        backgroundColor: _MapColors.black.withValues(alpha: 0.86),
-        foregroundColor: _MapColors.white,
-        disabledForegroundColor: _MapColors.disabled,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: colors.surface.withValues(alpha: 0.92),
+        foregroundColor: colors.primaryText,
+        disabledForegroundColor: colors.disabled,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: colors.outline),
+        ),
       ),
       icon: loading
-          ? const SizedBox(
+          ? SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.accent,
+              ),
             )
           : Icon(icon, size: 20),
     );
   }
 }
 
-class _MapColors {
-  static const black = Color(0xFF0B0B0C);
-  static const surface = Color(0xFF151518);
-  static const white = Color(0xFFFFFFFF);
-  static const secondary = Color(0xFFB4B4BC);
-  static const disabled = Color(0xFF6E6E78);
-  static const accent = Color(0xFF37D399);
-}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../theme.dart';
 import '../data/location_service.dart';
 import '../domain/geofence.dart';
 import '../domain/geofence_validator.dart';
@@ -79,15 +80,17 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B0C),
+      backgroundColor: colors.background,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: RadialGradient(
             center: Alignment.topRight,
             radius: 1.2,
-            colors: [Color(0xFF13211F), Color(0xFF0B0B0C)],
-            stops: [0, 0.58],
+            colors: [colors.gradientTop, colors.gradientBottom],
+            stops: const [0, 0.58],
           ),
         ),
         child: SafeArea(
@@ -96,20 +99,20 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Choose your location',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    color: colors.primaryText,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Find Spaces near you or pick a spot on the map.',
                   style: TextStyle(
                     fontSize: 15,
-                    color: Color(0xFFB4B4BC),
+                    color: colors.secondaryText,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -133,8 +136,8 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _error!,
-                    style: const TextStyle(
-                      color: Color(0xFFFF6262),
+                    style: TextStyle(
+                      color: colors.dangerStrong,
                       fontSize: 13,
                     ),
                   ),
@@ -151,10 +154,10 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen> {
                     icon: const Icon(Icons.check_rounded, size: 19),
                     label: const Text('Use this location'),
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF37D399),
-                      foregroundColor: const Color(0xFF0B0B0C),
-                      disabledBackgroundColor: const Color(0xFF1C1C20),
-                      disabledForegroundColor: const Color(0xFF6E6E78),
+                      backgroundColor: colors.accent,
+                      foregroundColor: colors.onAccent,
+                      disabledBackgroundColor: colors.card,
+                      disabledForegroundColor: colors.disabled,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(19),
                       ),
