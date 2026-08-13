@@ -10,14 +10,15 @@ import 'package:space_mobile/main.dart';
 import 'package:space_mobile/services/api_client.dart';
 import 'package:space_mobile/services/api_service.dart';
 import 'package:space_mobile/services/chat_socket.dart';
+import 'package:space_mobile/theme.dart';
 
 class _FakeChatSocket extends ChatSocket {
   _FakeChatSocket(this._incoming)
-      : super(
-          baseUrl: 'http://test',
-          getAccessToken: () => 'token',
-          spaceId: 'space-1',
-        );
+    : super(
+        baseUrl: 'http://test',
+        getAccessToken: () => 'token',
+        spaceId: 'space-1',
+      );
 
   final StreamController<WsEvent> _incoming;
   bool connected = false;
@@ -37,10 +38,12 @@ void main() {
     await tester.pumpWidget(const SpaceApp());
 
     expect(find.byType(SpaceApp), findsOneWidget);
+    expect(find.text('Finding your orbit...'), findsOneWidget);
   });
 
-  testWidgets('discovery renders space cards and joins a public space',
-      (tester) async {
+  testWidgets('discovery renders space cards and joins a public space', (
+    tester,
+  ) async {
     var joinCalled = false;
     final mock = MockClient((request) async {
       if (request.url.path.contains('/spaces/discover')) {
@@ -57,7 +60,7 @@ void main() {
               'member_count': 3,
               'joined': false,
               'created_at': '2026-01-01T00:00:00Z',
-            }
+            },
           ]),
           200,
           headers: {'content-type': 'application/json'},
@@ -91,11 +94,7 @@ void main() {
           longitude: 77.59,
           onJoinSpace: (space) async {
             joinedSpaceId = space.id;
-            await api.joinSpace(
-              space.id,
-              latitude: 12.97,
-              longitude: 77.59,
-            );
+            await api.joinSpace(space.id, latitude: 12.97, longitude: 77.59);
             return true;
           },
           onCreateSpace: () {},
@@ -119,8 +118,67 @@ void main() {
     expect(joinedSpaceId, 'space-1');
   });
 
-  testWidgets('chat renders websocket messages and sends via POST',
-      (tester) async {
+  testWidgets('discovery card fits on narrow Android viewport', (tester) async {
+    tester.view.physicalSize = const Size(720, 1600);
+    tester.view.devicePixelRatio = 1.875;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final mock = MockClient((request) async {
+      if (request.url.path.contains('/spaces/discover')) {
+        return http.Response(
+          jsonEncode([
+            {
+              'id': 'space-1',
+              'name': 'A Very Calm Neighborhood Space',
+              'description':
+                  'A nearby place for thoughtful local conversations.',
+              'visibility': 'public',
+              'latitude': 12.97,
+              'longitude': 77.59,
+              'radius_meters': 100,
+              'distance_meters': 50,
+              'member_count': 3,
+              'joined': false,
+              'created_at': '2026-01-01T00:00:00Z',
+            },
+          ]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('not found', 404);
+    });
+
+    final api = ApiService(ApiClient('http://test', client: mock));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildSpaceTheme(Brightness.light),
+        darkTheme: buildSpaceTheme(Brightness.dark),
+        home: SpaceDiscoveryScreen(
+          api: api,
+          latitude: 12.97,
+          longitude: 77.59,
+          onJoinSpace: (_) async => true,
+          onCreateSpace: () {},
+          onChangeLocation: () {},
+          onLogout: () {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('A Very Calm Neighborhood Space'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('chat renders websocket messages and sends via POST', (
+    tester,
+  ) async {
     final incoming = StreamController<WsEvent>.broadcast();
     final socket = _FakeChatSocket(incoming);
 
@@ -128,8 +186,11 @@ void main() {
     final mock = MockClient((request) async {
       if (request.url.path.endsWith('/messages')) {
         if (request.method == 'GET') {
-          return http.Response('[]', 200,
-              headers: {'content-type': 'application/json'});
+          return http.Response(
+            '[]',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         }
         sentContent = jsonDecode(request.body)['content'] as String;
         return http.Response(
@@ -175,27 +236,35 @@ void main() {
 
     expect(socket.connected, isTrue);
 
-    incoming.add(WsMessageEvent(MessageData(
-      id: 'm1',
-      anonymousId: 'anon-2',
-      content: 'hello from websocket',
-      createdAt: '2026-01-01T00:00:00Z',
-    )));
+    incoming.add(
+      WsMessageEvent(
+        MessageData(
+          id: 'm1',
+          anonymousId: 'anon-2',
+          content: 'hello from websocket',
+          createdAt: '2026-01-01T00:00:00Z',
+        ),
+      ),
+    );
     await tester.pump();
     await tester.pump();
     expect(find.text('hello from websocket'), findsOneWidget);
 
-    incoming.add(WsMessageEvent(MessageData(
-      id: 'm1',
-      anonymousId: 'anon-2',
-      content: 'hello from websocket',
-      createdAt: '2026-01-01T00:00:00Z',
-    )));
+    incoming.add(
+      WsMessageEvent(
+        MessageData(
+          id: 'm1',
+          anonymousId: 'anon-2',
+          content: 'hello from websocket',
+          createdAt: '2026-01-01T00:00:00Z',
+        ),
+      ),
+    );
     await tester.pump();
     expect(find.text('hello from websocket'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'sent via post');
-    await tester.tap(find.byIcon(Icons.arrow_forward_rounded));
+    await tester.tap(find.byIcon(Icons.send_rounded));
     await tester.pump();
     await tester.pump();
 
@@ -205,21 +274,28 @@ void main() {
     await incoming.close();
   });
 
-  testWidgets('long-press sends a reaction and reaction event updates chip',
-      (tester) async {
+  testWidgets('long-press sends a reaction and reaction event updates chip', (
+    tester,
+  ) async {
     final incoming = StreamController<WsEvent>.broadcast();
     final socket = _FakeChatSocket(incoming);
 
     String? reactedEmoji;
     final mock = MockClient((request) async {
       if (request.url.path.endsWith('/messages')) {
-        return http.Response('[]', 200,
-            headers: {'content-type': 'application/json'});
+        return http.Response(
+          '[]',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
       }
       if (request.url.path.endsWith('/react')) {
         reactedEmoji = jsonDecode(request.body)['emoji'] as String;
-        return http.Response('{}', 200,
-            headers: {'content-type': 'application/json'});
+        return http.Response(
+          '{}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
       }
       return http.Response('not found', 404);
     });
@@ -250,12 +326,16 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    incoming.add(WsMessageEvent(MessageData(
-      id: 'm1',
-      anonymousId: 'anon-2',
-      content: 'react to me',
-      createdAt: '2026-01-01T00:00:00Z',
-    )));
+    incoming.add(
+      WsMessageEvent(
+        MessageData(
+          id: 'm1',
+          anonymousId: 'anon-2',
+          content: 'react to me',
+          createdAt: '2026-01-01T00:00:00Z',
+        ),
+      ),
+    );
     await tester.pump();
     await tester.pump();
 
@@ -266,11 +346,7 @@ void main() {
 
     expect(reactedEmoji, '👍');
 
-    incoming.add(const WsReactionEvent(
-      messageId: 'm1',
-      emoji: '👍',
-      count: 2,
-    ));
+    incoming.add(const WsReactionEvent(messageId: 'm1', emoji: '👍', count: 2));
     await tester.pump();
     await tester.pump();
 
@@ -279,8 +355,9 @@ void main() {
     await incoming.close();
   });
 
-  testWidgets('replying sends message with reply_to and restores on failure',
-      (tester) async {
+  testWidgets('replying sends message with reply_to and restores on failure', (
+    tester,
+  ) async {
     final incoming = StreamController<WsEvent>.broadcast();
     final socket = _FakeChatSocket(incoming);
 
@@ -289,8 +366,11 @@ void main() {
     final mock = MockClient((request) async {
       if (request.url.path.endsWith('/messages')) {
         if (request.method == 'GET') {
-          return http.Response('[]', 200,
-              headers: {'content-type': 'application/json'});
+          return http.Response(
+            '[]',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         }
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         replyTo = body['reply_to'] as String?;
@@ -340,12 +420,16 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    incoming.add(WsMessageEvent(MessageData(
-      id: 'm1',
-      anonymousId: 'anon-2',
-      content: 'original message',
-      createdAt: '2026-01-01T00:00:00Z',
-    )));
+    incoming.add(
+      WsMessageEvent(
+        MessageData(
+          id: 'm1',
+          anonymousId: 'anon-2',
+          content: 'original message',
+          createdAt: '2026-01-01T00:00:00Z',
+        ),
+      ),
+    );
     await tester.pump();
     await tester.pump();
 
@@ -358,7 +442,7 @@ void main() {
 
     failNext = true;
     await tester.enterText(find.byType(TextField), 'my reply');
-    await tester.tap(find.byIcon(Icons.arrow_forward_rounded));
+    await tester.tap(find.byIcon(Icons.send_rounded));
     await tester.pump();
     await tester.pump();
     await tester.pump();
@@ -369,8 +453,9 @@ void main() {
     await incoming.close();
   });
 
-  testWidgets('My Spaces lists joined spaces and opens them on tap',
-      (tester) async {
+  testWidgets('My Spaces lists joined spaces and opens them on tap', (
+    tester,
+  ) async {
     var openCalled = false;
     String? openedId;
     final mock = MockClient((request) async {
@@ -431,11 +516,15 @@ void main() {
     expect(openedId, 'space-1');
   });
 
-  testWidgets('My Spaces shows empty state when no joined spaces',
-      (tester) async {
+  testWidgets('My Spaces shows empty state when no joined spaces', (
+    tester,
+  ) async {
     final mock = MockClient((request) async {
-      return http.Response('[]', 200,
-          headers: {'content-type': 'application/json'});
+      return http.Response(
+        '[]',
+        200,
+        headers: {'content-type': 'application/json'},
+      );
     });
 
     final api = ApiService(ApiClient('http://test', client: mock));
@@ -457,8 +546,11 @@ void main() {
     final mock = MockClient((request) async {
       if (request.url.path.endsWith('/messages')) {
         if (request.method == 'GET') {
-          return http.Response('[]', 200,
-              headers: {'content-type': 'application/json'});
+          return http.Response(
+            '[]',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         }
         return http.Response(
           jsonEncode({
@@ -509,12 +601,16 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    incoming.add(WsMessageEvent(MessageData(
-      id: 'm1',
-      anonymousId: 'anon-me',
-      content: 'my own message',
-      createdAt: '2026-01-01T00:00:00Z',
-    )));
+    incoming.add(
+      WsMessageEvent(
+        MessageData(
+          id: 'm1',
+          anonymousId: 'anon-me',
+          content: 'my own message',
+          createdAt: '2026-01-01T00:00:00Z',
+        ),
+      ),
+    );
     await tester.pump();
     await tester.pump();
 
@@ -541,8 +637,11 @@ void main() {
     final mock = MockClient((request) async {
       if (request.url.path.endsWith('/messages')) {
         if (request.method == 'GET') {
-          return http.Response('[]', 200,
-              headers: {'content-type': 'application/json'});
+          return http.Response(
+            '[]',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
         }
         return http.Response(
           jsonEncode({
@@ -594,12 +693,16 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    incoming.add(WsMessageEvent(MessageData(
-      id: 'm1',
-      anonymousId: 'anon-2',
-      content: 'offensive message',
-      createdAt: '2026-01-01T00:00:00Z',
-    )));
+    incoming.add(
+      WsMessageEvent(
+        MessageData(
+          id: 'm1',
+          anonymousId: 'anon-2',
+          content: 'offensive message',
+          createdAt: '2026-01-01T00:00:00Z',
+        ),
+      ),
+    );
     await tester.pump();
     await tester.pump();
 

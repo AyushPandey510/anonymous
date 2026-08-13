@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-const spaceAccent = Color(0xFF37D399);
+const spaceAccent = Color(0xFFADC6FF);
 
 class SpaceColors extends ThemeExtension<SpaceColors> {
   const SpaceColors({
@@ -42,43 +42,43 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
   final Color chipBackground;
 
   static const dark = SpaceColors(
-    background: Color(0xFF0A0B0E),
-    surface: Color(0xFF141519),
-    card: Color(0xFF1D1E24),
-    primaryText: Color(0xFFF9FAFB),
-    secondaryText: Color(0xFF9CA3AF),
-    disabled: Color(0xFF6B7280),
-    accent: Color(0xFF009F78),
+    background: Color(0xFF05070A),
+    surface: Color(0xFF111417),
+    card: Color(0x9911141B),
+    primaryText: Color(0xFFE1E2E7),
+    secondaryText: Color(0xFFC2C6D6),
+    disabled: Color(0xFF8C909F),
+    accent: Color(0xFFADC6FF),
     onAccent: Color(0xFFFFFFFF),
-    danger: Color(0xFFEF4444),
-    warning: Color(0xFFF59E0B),
-    dangerStrong: Color(0xFFF87171),
-    outline: Color(0x1FFFFFFF),
-    outlineSubtle: Color(0x0FFFFFFF),
-    gradientTop: Color(0xFF0F1E1B),
-    gradientBottom: Color(0xFF0A0B0E),
-    navBackground: Color(0xFF111216),
-    chipBackground: Color(0xFF24262E),
+    danger: Color(0xFFFFB4AB),
+    warning: Color(0xFFFFD166),
+    dangerStrong: Color(0xFFFF7B72),
+    outline: Color(0x14FFFFFF),
+    outlineSubtle: Color(0x0DFFFFFF),
+    gradientTop: Color(0xFF111827),
+    gradientBottom: Color(0xFF05070A),
+    navBackground: Color(0x991D2023),
+    chipBackground: Color(0x14282A2E),
   );
 
   static const light = SpaceColors(
-    background: Color(0xFFF7F9F8),
-    surface: Color(0xFFFFFFFF),
-    card: Color(0xFFFFFFFF),
-    primaryText: Color(0xFF17211F),
-    secondaryText: Color(0xFF6B7774),
-    disabled: Color(0xFFAAB4B1),
-    accent: Color(0xFF009F78),
+    background: Color(0xFFF7F9FB),
+    surface: Color(0xFFF7F9FB),
+    card: Color(0xB3FFFFFF),
+    primaryText: Color(0xFF0F172A),
+    secondaryText: Color(0xFF475569),
+    disabled: Color(0xFF767586),
+    accent: Color(0xFF4648D4),
     onAccent: Color(0xFFFFFFFF),
-    danger: Color(0xFFDC2626),
+    danger: Color(0xFFBA1A1A),
     warning: Color(0xFFD97706),
-    dangerStrong: Color(0xFFB91C1C),
-    outline: Color(0xFFE6ECE9),
-    outlineSubtle: Color(0xFFF0F4F2),
-    gradientTop: Color(0xFFEFF5F2),
-    gradientBottom: Color(0xFFF7F9F8),
-    navBackground: Color(0xFFFFFFFF),
-    chipBackground: Color(0xFFF0F4F2),
+    dangerStrong: Color(0xFF93000A),
+    outline: Color(0x99FFFFFF),
+    outlineSubtle: Color(0x80E0E3E5),
+    gradientTop: Color(0xFFE1E0FF),
+    gradientBottom: Color(0xFFF7F9FB),
+    navBackground: Color(0xCCFFFFFF),
+    chipBackground: Color(0x66FFFFFF),
   );
 
   static SpaceColors of(BuildContext context) =>
@@ -151,30 +151,43 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
 }
 
 ThemeData buildSpaceTheme(Brightness brightness) {
-  final colors =
-      brightness == Brightness.dark ? SpaceColors.dark : SpaceColors.light;
-  final scheme = ColorScheme.fromSeed(
-    seedColor: colors.accent,
-    brightness: brightness,
-    primary: colors.accent,
-    onPrimary: colors.onAccent,
-  ).copyWith(
-    surface: colors.surface,
-    onSurface: colors.primaryText,
-    secondary: colors.accent,
-    onSecondary: colors.onAccent,
-    error: colors.danger,
-    outline: colors.outline,
-  );
+  final colors = brightness == Brightness.dark
+      ? SpaceColors.dark
+      : SpaceColors.light;
+  final scheme =
+      ColorScheme.fromSeed(
+        seedColor: colors.accent,
+        brightness: brightness,
+        primary: colors.accent,
+        onPrimary: colors.onAccent,
+      ).copyWith(
+        surface: colors.surface,
+        onSurface: colors.primaryText,
+        secondary: colors.accent,
+        onSecondary: colors.onAccent,
+        error: colors.danger,
+        outline: colors.outline,
+      );
 
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
-    fontFamily: 'Inter',
+    fontFamily: 'Hanken Grotesk',
     scaffoldBackgroundColor: colors.background,
     colorScheme: scheme,
     extensions: [colors],
     textSelectionTheme: TextSelectionThemeData(cursorColor: colors.accent),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+    ),
     dialogTheme: DialogThemeData(
       backgroundColor: colors.surface,
       surfaceTintColor: Colors.transparent,
@@ -213,4 +226,3 @@ ThemeData buildSpaceTheme(Brightness brightness) {
     ),
   );
 }
-

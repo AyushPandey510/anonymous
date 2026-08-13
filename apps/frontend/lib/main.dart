@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:space_mobile/features/location/data/location_service.dart';
 import 'package:space_mobile/features/location/domain/geofence.dart';
 import 'package:space_mobile/features/location/domain/geofence_validator.dart';
 import 'package:space_mobile/features/location/domain/geo_point.dart';
 import 'package:space_mobile/features/location/domain/location_fix.dart';
+import 'package:space_mobile/features/location/presentation/interactive_geofence_map.dart';
 import 'package:space_mobile/features/location/presentation/location_selection_screen.dart';
 import 'package:space_mobile/services/api_client.dart';
 import 'package:space_mobile/services/api_service.dart';
@@ -34,8 +37,9 @@ class _SpaceAppState extends State<SpaceApp> {
 
   void _toggleTheme() {
     setState(() {
-      _themeMode =
-          _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+      _themeMode = _themeMode == ThemeMode.dark
+          ? ThemeMode.light
+          : ThemeMode.dark;
     });
   }
 
@@ -54,7 +58,11 @@ class _SpaceAppState extends State<SpaceApp> {
 }
 
 class AppLoader extends StatefulWidget {
-  const AppLoader({super.key, required this.onToggleTheme, required this.isDark});
+  const AppLoader({
+    super.key,
+    required this.onToggleTheme,
+    required this.isDark,
+  });
 
   final VoidCallback onToggleTheme;
   final bool isDark;
@@ -106,11 +114,9 @@ class _AppLoaderState extends State<AppLoader> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.cloud_off_rounded,
-                    size: 48, color: colors.disabled),
+                Icon(Icons.cloud_off_rounded, size: 48, color: colors.disabled),
                 const SizedBox(height: 16),
-                Text(_error!,
-                    style: TextStyle(color: colors.secondaryText)),
+                Text(_error!, style: TextStyle(color: colors.secondaryText)),
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   onPressed: () {
@@ -131,12 +137,7 @@ class _AppLoaderState extends State<AppLoader> {
     }
 
     if (!_ready) {
-      return Scaffold(
-        backgroundColor: colors.background,
-        body: Center(
-          child: CircularProgressIndicator(color: colors.accent),
-        ),
-      );
+      return const OrbitOpeningScreen();
     }
 
     return SpaceShell(
@@ -179,7 +180,7 @@ class _SpaceShellState extends State<SpaceShell> {
   @override
   void initState() {
     super.initState();
-    _checkSavedLocation();
+    _loadSavedLocation();
   }
 
   @override
@@ -188,14 +189,11 @@ class _SpaceShellState extends State<SpaceShell> {
     super.dispose();
   }
 
-  Future<void> _checkSavedLocation() async {
+  Future<void> _loadSavedLocation() async {
     final saved = await LocationSelectionScreen.getSavedLocation();
     if (!mounted) return;
     if (saved != null) {
-      setState(() {
-        _userLocation = saved;
-        _screen = AppScreen.discovery;
-      });
+      setState(() => _userLocation = saved);
     }
   }
 
@@ -240,9 +238,7 @@ class _SpaceShellState extends State<SpaceShell> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(
           'Left Space Area',
           style: TextStyle(
@@ -284,20 +280,21 @@ class _SpaceShellState extends State<SpaceShell> {
   Widget build(BuildContext context) {
     return switch (_screen) {
       AppScreen.location => LocationSelectionScreen(
-          onLocationSelected: _onLocationSelected,
-        ),
+        initialLocation: _userLocation,
+        onLocationSelected: _onLocationSelected,
+      ),
       AppScreen.discovery || AppScreen.mySpaces => _buildHomeTabs(),
       AppScreen.chat => ChatScreen(
-          space: _activeSpace!,
-          sessionId: _sessionId!,
-          anonymousName: _anonymousName!,
-          api: widget.api,
-          onExited: _onGeofenceExit,
-          onLeave: _onLeaveSpace,
-          onBack: _onBackToDashboard,
-          onToggleTheme: widget.onToggleTheme,
-          isDark: widget.isDark,
-        ),
+        space: _activeSpace!,
+        sessionId: _sessionId!,
+        anonymousName: _anonymousName!,
+        api: widget.api,
+        onExited: _onGeofenceExit,
+        onLeave: _onLeaveSpace,
+        onBack: _onBackToDashboard,
+        onToggleTheme: widget.onToggleTheme,
+        isDark: widget.isDark,
+      ),
     };
   }
 
@@ -324,33 +321,66 @@ class _SpaceShellState extends State<SpaceShell> {
               onToggleTheme: widget.onToggleTheme,
               isDark: widget.isDark,
             ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: colors.outline)),
-        ),
-        child: NavigationBar(
-          selectedIndex: selectedIndex,
-          onDestinationSelected: (index) {
-            setState(() {
-              _screen = index == 0 ? AppScreen.discovery : AppScreen.mySpaces;
-            });
-          },
-          backgroundColor: colors.navBackground,
-          indicatorColor: colors.accent.withValues(alpha: 0.12),
-          height: 66,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          destinations: [
-            NavigationDestination(
-              icon: Icon(Icons.radar_outlined, color: colors.secondaryText, size: 22),
-              selectedIcon: Icon(Icons.radar_rounded, color: colors.accent, size: 22),
-              label: 'Discover',
+      bottomNavigationBar: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: colors.navBackground,
+              border: Border(top: BorderSide(color: colors.outline)),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.accent.withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, -6),
+                ),
+              ],
             ),
-            NavigationDestination(
-              icon: Icon(Icons.forum_outlined, color: colors.secondaryText, size: 22),
-              selectedIcon: Icon(Icons.forum_rounded, color: colors.accent, size: 22),
-              label: 'My Spaces',
+            child: NavigationBar(
+              selectedIndex: selectedIndex,
+              onDestinationSelected: (index) {
+                setState(() {
+                  _screen = index == 0
+                      ? AppScreen.discovery
+                      : AppScreen.mySpaces;
+                });
+              },
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              indicatorColor: colors.accent.withValues(alpha: 0.20),
+              height: 76,
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              destinations: [
+                NavigationDestination(
+                  icon: Icon(
+                    Icons.explore_outlined,
+                    color: colors.secondaryText,
+                    size: 23,
+                  ),
+                  selectedIcon: Icon(
+                    Icons.explore_rounded,
+                    color: colors.accent,
+                    size: 23,
+                  ),
+                  label: 'Discovery',
+                ),
+                NavigationDestination(
+                  icon: Icon(
+                    Icons.layers_outlined,
+                    color: colors.secondaryText,
+                    size: 23,
+                  ),
+                  selectedIcon: Icon(
+                    Icons.layers_rounded,
+                    color: colors.accent,
+                    size: 23,
+                  ),
+                  label: 'My Spaces',
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -511,16 +541,21 @@ class CreateSpaceScreen extends StatefulWidget {
 
 class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
   final _nameController = TextEditingController();
+  final _locationService = const SpaceLocationService();
   final _validator = const GeofenceValidator();
   bool _isPrivate = false;
   double _radius = 120;
   late GeoPoint _selectedPoint;
+  double _accuracy = 18;
+  bool _locating = true;
+  bool _hasDeviceFix = false;
   bool _creating = false;
 
   @override
   void initState() {
     super.initState();
     _selectedPoint = widget.initialLocation;
+    _refreshDeviceLocation();
   }
 
   @override
@@ -538,7 +573,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
     );
     final currentFix = LocationFix(
       point: _selectedPoint,
-      accuracyMeters: 18,
+      accuracyMeters: _accuracy,
       capturedAt: DateTime.now().toUtc(),
     );
     final validation = _validator.validate(
@@ -546,138 +581,244 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
       current: currentFix,
     );
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.topRight,
-            radius: 1.2,
-            colors: [colors.gradientTop, colors.gradientBottom],
-            stops: const [0, 0.58],
-          ),
-        ),
-        child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 112),
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.arrow_back_rounded, color: colors.primaryText),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Create Space',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: colors.primaryText,
+    return SpaceScaffold(
+      child: SafeArea(
+        child: Stack(
+          children: [
+            ListView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 118),
+              children: [
+                Row(
+                  children: [
+                    _GlassIconButton(
+                      icon: Icons.close_rounded,
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        'Create Space',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Montserrat',
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: colors.accent,
+                        ),
                       ),
                     ),
-                  ),
-                  if (widget.onToggleTheme != null)
-                    IconButton(
-                      onPressed: widget.onToggleTheme,
-                      icon: Icon(
-                        widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                        color: colors.primaryText,
-                      ),
-                      tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Set up a new Space for your area.',
-                style: TextStyle(
-                  color: colors.secondaryText,
-                  fontSize: 15,
+                    if (widget.onToggleTheme != null)
+                      _GlassIconButton(
+                        icon: widget.isDark
+                            ? Icons.light_mode_rounded
+                            : Icons.dark_mode_rounded,
+                        onPressed: widget.onToggleTheme,
+                      )
+                    else
+                      const SizedBox(width: 48),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 24),
-              StepCard(
-                step: 'Step 1',
-                title: 'Name',
-                child: SpaceTextField(controller: _nameController),
-              ),
-              const SizedBox(height: 14),
-              StepCard(
-                step: 'Step 2',
-                title: 'Visibility',
-                child: Row(
+                const SizedBox(height: 34),
+                StepCard(
+                  step: '1. Identity',
+                  title: 'Space Name',
+                  child: SpaceTextField(controller: _nameController),
+                ),
+                const SizedBox(height: 18),
+                StepCard(
+                  step: 'Visibility',
+                  title: 'Access Mode',
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ChoicePill(
+                          label: 'Public',
+                          selected: !_isPrivate,
+                          icon: Icons.public_rounded,
+                          onTap: () => setState(() => _isPrivate = false),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ChoicePill(
+                          label: 'Invite Only',
+                          selected: _isPrivate,
+                          icon: Icons.lock_rounded,
+                          onTap: () => setState(() => _isPrivate = true),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 34),
+                Row(
                   children: [
                     Expanded(
-                      child: ChoicePill(
-                        label: 'Public',
-                        selected: !_isPrivate,
-                        onTap: () => setState(() => _isPrivate = false),
+                      child: Text(
+                        '2. Geofence',
+                        style: TextStyle(
+                          fontFamily: 'Montserrat',
+                          fontSize: 23,
+                          fontWeight: FontWeight.w700,
+                          color: colors.primaryText,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ChoicePill(
-                        label: 'Private',
-                        selected: _isPrivate,
-                        onTap: () => setState(() => _isPrivate = true),
-                      ),
+                    GeofenceDecisionPanel(
+                      validation: validation,
+                      compact: true,
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 14),
-              StepCard(
-                step: 'Step 3',
-                title: 'Geofence',
-                child: Column(
-                  children: [
-                    GeofenceDecisionPanel(validation: validation),
-                    const SizedBox(height: 12),
-                    Slider(
-                      value: _radius,
-                      min: CircleGeofence.minRadiusMeters.toDouble(),
-                      max: CircleGeofence.maxRadiusMeters.toDouble(),
-                      divisions: CircleGeofence.maxRadiusMeters -
-                          CircleGeofence.minRadiusMeters,
-                      activeColor: colors.accent,
-                      inactiveColor: colors.card,
-                      onChanged: (value) => setState(() => _radius = value),
-                    ),
-                    Text(
-                      '${_radius.round()}m radius',
-                      style: TextStyle(
-                        color: colors.secondaryText,
-                        fontSize: 13,
+                const SizedBox(height: 14),
+                _GlassPanel(
+                  padding: EdgeInsets.zero,
+                  borderRadius: 28,
+                  child: Column(
+                    children: [
+                      InteractiveGeofenceMap(
+                        point: _selectedPoint,
+                        radiusMeters: _radius.round(),
+                        validation: validation,
+                        allowPointSelection: false,
+                        showSearch: false,
+                        onPointChanged: (point) {
+                          setState(() => _selectedPoint = point);
+                        },
+                        onAccuracyChanged: (accuracy) {
+                          _accuracy = accuracy;
+                        },
                       ),
-                    ),
-                  ],
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 16, 22, 20),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Radius',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.2,
+                                    color: colors.secondaryText,
+                                  ),
+                                ),
+                                const Spacer(),
+                                _GlassChip(
+                                  icon: Icons.radio_button_checked_rounded,
+                                  label: '${_radius.round()}m',
+                                  accent: colors.accent,
+                                ),
+                              ],
+                            ),
+                            Slider(
+                              value: _radius,
+                              min: CircleGeofence.minRadiusMeters.toDouble(),
+                              max: CircleGeofence.maxRadiusMeters.toDouble(),
+                              divisions:
+                                  CircleGeofence.maxRadiusMeters -
+                                  CircleGeofence.minRadiusMeters,
+                              activeColor: colors.accent,
+                              inactiveColor: colors.outlineSubtle,
+                              onChanged: (value) =>
+                                  setState(() => _radius = value),
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '${CircleGeofence.minRadiusMeters}m',
+                                  style: TextStyle(
+                                    color: colors.disabled,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  '${CircleGeofence.maxRadiusMeters}m',
+                                  style: TextStyle(
+                                    color: colors.disabled,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+              ],
+            ),
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 18,
+              child: SpaceButton(
+                label: _creating
+                    ? 'Creating...'
+                    : _locating
+                    ? 'Detecting Location...'
+                    : 'Initialize Space',
+                icon: Icons.rocket_launch_rounded,
+                loading: _creating || _locating,
+                onPressed: _creating || _locating || !_hasDeviceFix
+                    ? null
+                    : _createSpace,
               ),
-              const SizedBox(height: 20),
-              SpaceButton(
-                label: _creating ? 'Creating...' : 'Create Space',
-                icon: Icons.check_rounded,
-                loading: _creating,
-                onPressed: _creating ? null : _createSpace,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  Future<void> _refreshDeviceLocation() async {
+    setState(() => _locating = true);
+    try {
+      final fix = await _locationService.currentFix();
+      if (!mounted) return;
+      setState(() {
+        _selectedPoint = fix.point;
+        _accuracy = fix.accuracyMeters ?? 75;
+        _hasDeviceFix = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _hasDeviceFix = false);
+      final colors = SpaceColors.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not detect current location. Enable location and try again.',
+            style: TextStyle(color: colors.primaryText),
+          ),
+          backgroundColor: colors.card,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
   Future<void> _createSpace() async {
     setState(() => _creating = true);
     try {
+      final fix = await _locationService.currentFix();
+      if (!mounted) return;
+      setState(() {
+        _selectedPoint = fix.point;
+        _accuracy = fix.accuracyMeters ?? 75;
+        _hasDeviceFix = true;
+      });
       final response = await widget.api.createSpace(
         name: _nameController.text.trim().isEmpty
             ? 'Untitled Space'
             : _nameController.text.trim(),
         visibility: _isPrivate ? 'private' : 'public',
-        latitude: _selectedPoint.latitude,
-        longitude: _selectedPoint.longitude,
+        latitude: fix.point.latitude,
+        longitude: fix.point.longitude,
         radiusMeters: _radius.round(),
       );
 
@@ -698,7 +839,10 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
       final colors = SpaceColors.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to create: ${e.toString()}', style: TextStyle(color: colors.primaryText)),
+          content: Text(
+            'Failed to create: ${e.toString()}',
+            style: TextStyle(color: colors.primaryText),
+          ),
           backgroundColor: colors.card,
         ),
       );
@@ -749,7 +893,8 @@ class ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _socket = widget.socket ??
+    _socket =
+        widget.socket ??
         ChatSocket(
           baseUrl: widget.api.client.baseUrl,
           getAccessToken: () => widget.api.client.accessToken ?? '',
@@ -781,18 +926,21 @@ class ChatScreenState extends State<ChatScreen> {
     _messageIds.add(message.id);
     final colors = SpaceColors.of(context);
     setState(() {
-      _messages.add(ChatMessage(
-        id: message.id,
-        name: message.anonymousId,
-        text: message.content,
-        replyTo: message.replyTo,
-        replyText: message.replyContent,
-        color: colors.accent,
-        reactions: message.reactions.fold<Map<String, int>>(
-          {},
-          (map, r) => map..[r.emoji] = r.count,
+      _messages.add(
+        ChatMessage(
+          id: message.id,
+          name: message.anonymousId,
+          text: message.content,
+          replyTo: message.replyTo,
+          replyText: message.replyContent,
+          createdAt: DateTime.tryParse(message.createdAt),
+          color: colors.accent,
+          reactions: message.reactions.fold<Map<String, int>>(
+            {},
+            (map, r) => map..[r.emoji] = r.count,
+          ),
         ),
-      ));
+      );
     });
   }
 
@@ -814,18 +962,21 @@ class ChatScreenState extends State<ChatScreen> {
       setState(() {
         for (final m in msgs) {
           if (_messageIds.add(m.id)) {
-            _messages.add(ChatMessage(
-              id: m.id,
-              name: m.anonymousId,
-              text: m.content,
-              replyTo: m.replyTo,
-              replyText: m.replyContent,
-              color: colors.accent,
-              reactions: m.reactions.fold<Map<String, int>>(
-                {},
-                (map, r) => map..[r.emoji] = r.count,
+            _messages.add(
+              ChatMessage(
+                id: m.id,
+                name: m.anonymousId,
+                text: m.content,
+                replyTo: m.replyTo,
+                replyText: m.replyContent,
+                createdAt: DateTime.tryParse(m.createdAt),
+                color: colors.accent,
+                reactions: m.reactions.fold<Map<String, int>>(
+                  {},
+                  (map, r) => map..[r.emoji] = r.count,
+                ),
               ),
-            ));
+            );
           }
         }
         _loadingMessages = false;
@@ -885,10 +1036,7 @@ class ChatScreenState extends State<ChatScreen> {
                   message.text,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.secondaryText,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: colors.secondaryText, fontSize: 13),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -907,9 +1055,14 @@ class ChatScreenState extends State<ChatScreen> {
                 const SizedBox(height: 14),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.reply_rounded,
-                      color: colors.secondaryText),
-                  title: Text('Reply', style: TextStyle(color: colors.primaryText)),
+                  leading: Icon(
+                    Icons.reply_rounded,
+                    color: colors.secondaryText,
+                  ),
+                  title: Text(
+                    'Reply',
+                    style: TextStyle(color: colors.primaryText),
+                  ),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     _startReply(message);
@@ -918,10 +1071,14 @@ class ChatScreenState extends State<ChatScreen> {
                 if (message.name == widget.anonymousName)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.delete_outline_rounded,
-                        color: colors.danger),
-                    title: Text('Delete',
-                        style: TextStyle(color: colors.danger)),
+                    leading: Icon(
+                      Icons.delete_outline_rounded,
+                      color: colors.danger,
+                    ),
+                    title: Text(
+                      'Delete',
+                      style: TextStyle(color: colors.danger),
+                    ),
                     onTap: () {
                       Navigator.of(sheetContext).pop();
                       _confirmDelete(message);
@@ -929,9 +1086,14 @@ class ChatScreenState extends State<ChatScreen> {
                   ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.flag_outlined,
-                      color: colors.secondaryText),
-                  title: Text('Report', style: TextStyle(color: colors.primaryText)),
+                  leading: Icon(
+                    Icons.flag_outlined,
+                    color: colors.secondaryText,
+                  ),
+                  title: Text(
+                    'Report',
+                    style: TextStyle(color: colors.primaryText),
+                  ),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     _showReportOptions(message);
@@ -951,11 +1113,14 @@ class ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'Delete message?',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: colors.primaryText,
+          ),
         ),
-        title: Text('Delete message?',
-            style: TextStyle(fontWeight: FontWeight.w700, color: colors.primaryText)),
         content: Text(
           'This removes the message for everyone. Available within 15 minutes of sending.',
           style: TextStyle(color: colors.secondaryText),
@@ -963,7 +1128,10 @@ class ChatScreenState extends State<ChatScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text('Cancel', style: TextStyle(color: colors.secondaryText)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.secondaryText),
+            ),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -990,7 +1158,10 @@ class ChatScreenState extends State<ChatScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Message deleted', style: TextStyle(color: colors.primaryText)),
+          content: Text(
+            'Message deleted',
+            style: TextStyle(color: colors.primaryText),
+          ),
           backgroundColor: colors.card,
         ),
       );
@@ -1001,7 +1172,10 @@ class ChatScreenState extends State<ChatScreen> {
           : 'Could not delete message';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(messageText, style: TextStyle(color: colors.primaryText)),
+          content: Text(
+            messageText,
+            style: TextStyle(color: colors.primaryText),
+          ),
           backgroundColor: colors.card,
         ),
       );
@@ -1014,11 +1188,14 @@ class ChatScreenState extends State<ChatScreen> {
       context: context,
       builder: (dialogContext) => SimpleDialog(
         backgroundColor: colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'Report message',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: colors.primaryText,
+          ),
         ),
-        title: Text('Report message',
-            style: TextStyle(fontWeight: FontWeight.w700, color: colors.primaryText)),
         children: [
           for (final reason in _reportReasons)
             SimpleDialogOption(
@@ -1040,7 +1217,10 @@ class ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Thanks, report submitted', style: TextStyle(color: colors.primaryText)),
+          content: Text(
+            'Thanks, report submitted',
+            style: TextStyle(color: colors.primaryText),
+          ),
           backgroundColor: colors.card,
         ),
       );
@@ -1048,7 +1228,10 @@ class ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not submit report', style: TextStyle(color: colors.primaryText)),
+          content: Text(
+            'Could not submit report',
+            style: TextStyle(color: colors.primaryText),
+          ),
           backgroundColor: colors.card,
         ),
       );
@@ -1072,51 +1255,62 @@ class ChatScreenState extends State<ChatScreen> {
             SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: colors.surface.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: colors.outline),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: _GlassPanel(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
                   ),
+                  borderRadius: 24,
                   child: Row(
                     children: [
                       if (widget.onBack != null)
-                        IconButton(
+                        _GlassIconButton(
+                          icon: Icons.arrow_back_rounded,
                           onPressed: widget.onBack,
-                          icon: Icon(
-                            Icons.arrow_back_rounded,
-                            color: colors.primaryText,
-                          ),
-                          tooltip: 'Back to Dashboard',
                         ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              widget.space.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              'Space',
                               style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                                color: colors.primaryText,
+                                fontFamily: 'Montserrat',
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: colors.accent,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 2),
                             Row(
                               children: [
-                                Icon(Icons.person_outline_rounded,
-                                    size: 14, color: colors.secondaryText),
-                                const SizedBox(width: 6),
-                                Text(
-                                  widget.anonymousName,
-                                  style: TextStyle(
-                                    color: colors.secondaryText,
-                                    fontSize: 12,
+                                Flexible(
+                                  child: Text(
+                                    widget.space.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: colors.secondaryText,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                StatusDot(color: colors.accent),
+                                const SizedBox(width: 5),
+                                Flexible(
+                                  child: Text(
+                                    widget.anonymousName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: colors.disabled,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1125,82 +1319,72 @@ class ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                       if (widget.onToggleTheme != null)
-                        IconButton(
+                        _GlassIconButton(
+                          icon: widget.isDark
+                              ? Icons.light_mode_rounded
+                              : Icons.dark_mode_rounded,
                           onPressed: widget.onToggleTheme,
-                          icon: Icon(
-                            widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                            color: colors.secondaryText,
-                          ),
-                          tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
                         ),
-                      IconButton(
+                      _GlassIconButton(
+                        icon: Icons.more_vert_rounded,
                         onPressed: widget.onLeave,
-                        icon: Icon(
-                          Icons.exit_to_app_rounded,
-                          color: colors.danger,
-                        ),
-                        tooltip: 'Leave Space',
+                        foregroundColor: colors.danger,
                       ),
                     ],
                   ),
                 ),
               ),
             ),
-          Expanded(
-            child: _loadingMessages
-                ? Center(child: CircularProgressIndicator(color: colors.accent))
-                : _messages.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.forum_outlined,
-                              size: 48,
-                              color: colors.disabled,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No messages yet',
-                              style: TextStyle(
-                                color: colors.secondaryText,
-                                fontSize: 16,
+            Expanded(
+              child: _loadingMessages
+                  ? Center(
+                      child: CircularProgressIndicator(color: colors.accent),
+                    )
+                  : _messages.isEmpty
+                  ? _EmptyState(
+                      icon: Icons.forum_outlined,
+                      title: 'No messages yet',
+                      subtitle: 'Start the conversation',
+                      actionLabel: null,
+                      onAction: null,
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                      itemCount: _messages.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 18),
+                              child: _GlassChip(
+                                icon: Icons.today_rounded,
+                                label: 'Today',
+                                accent: colors.secondaryText,
                               ),
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Start the conversation',
-                              style: TextStyle(
-                                color: colors.disabled,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final message = _messages[index];
-                          return MessageCard(
-                            message: message,
-                            onLongPress: () => _showMessageActions(message),
                           );
-                        },
-                      ),
-          ),
-          ChatComposer(
-            controller: _controller,
-            onSend: _sendMessage,
-            replyingTo: _replyingTo,
-            onCancelReply: () => setState(() => _replyingTo = null),
-          ),
-        ],
+                        }
+                        final message = _messages[index - 1];
+                        return MessageCard(
+                          message: message,
+                          isMine: message.name == widget.anonymousName,
+                          onLongPress: () => _showMessageActions(message),
+                        );
+                      },
+                    ),
+            ),
+            ChatComposer(
+              controller: _controller,
+              onSend: _sendMessage,
+              replyingTo: _replyingTo,
+              spaceName: widget.space.name,
+              onCancelReply: () => setState(() => _replyingTo = null),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 // API-backed discovery screen
@@ -1269,14 +1453,14 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
   }
 
   Space _toSpace(SpaceData data) => Space(
-        id: data.id,
-        name: data.name,
-        visibility: data.visibility,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        radiusMeters: data.radiusMeters,
-        createdAt: DateTime.now(),
-      );
+    id: data.id,
+    name: data.name,
+    visibility: data.visibility,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    radiusMeters: data.radiusMeters,
+    createdAt: DateTime.now(),
+  );
 
   Future<void> _join(SpaceData data) async {
     if (_joiningId != null) return;
@@ -1308,69 +1492,53 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _SpaceTopBar(
+              centerTitle: 'Space',
+              leadingIcon: Icons.language_rounded,
+              onLeading: widget.onChangeLocation,
+              trailingIcon: widget.isDark
+                  ? Icons.light_mode_rounded
+                  : Icons.dark_mode_rounded,
+              onTrailing: widget.onToggleTheme,
+            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Text.rich(
+                    TextSpan(
+                      text: '$_greeting,\n',
                       children: [
-                        Text(
-                          _greeting,
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.5,
-                            color: colors.primaryText,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.place_rounded,
-                              size: 14,
-                              color: colors.accent,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(4)} • Nearby',
-                              style: TextStyle(
-                                color: colors.secondaryText,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+                        TextSpan(
+                          text: 'Explorer.',
+                          style: TextStyle(color: colors.accent),
                         ),
                       ],
                     ),
-                  ),
-                  if (widget.onToggleTheme != null)
-                    IconButton(
-                      onPressed: widget.onToggleTheme,
-                      icon: Icon(
-                        widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                        color: colors.secondaryText,
-                        size: 22,
-                      ),
-                      tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
+                    style: TextStyle(
+                      fontFamily: 'Montserrat',
+                      fontSize: 32,
+                      height: 1.15,
+                      fontWeight: FontWeight.w800,
+                      color: colors.primaryText,
                     ),
-                  IconButton(
-                    onPressed: widget.onChangeLocation,
-                    icon: Icon(Icons.edit_location_alt_rounded,
-                        color: colors.secondaryText,
-                        size: 22),
-                    tooltip: 'Change location',
+                  ),
+                  const SizedBox(height: 18),
+                  _GlassChip(
+                    icon: Icons.my_location_rounded,
+                    label:
+                        '${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(4)}',
+                    accent: colors.accent,
                   ),
                 ],
               ),
             ),
             if (_loading)
               Expanded(
-                child: Center(child: CircularProgressIndicator(color: colors.accent)),
+                child: Center(
+                  child: CircularProgressIndicator(color: colors.accent),
+                ),
               )
             else if (_error != null)
               Expanded(
@@ -1381,8 +1549,11 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.error_outline_rounded,
-                            size: 48, color: colors.danger),
+                        Icon(
+                          Icons.error_outline_rounded,
+                          size: 48,
+                          color: colors.danger,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           'Unable to load nearby spaces',
@@ -1396,7 +1567,10 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                         Text(
                           'Please check your connection and try again.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: colors.secondaryText, fontSize: 14),
+                          style: TextStyle(
+                            color: colors.secondaryText,
+                            fontSize: 14,
+                          ),
                         ),
                         const SizedBox(height: 20),
                         FilledButton.icon(
@@ -1407,7 +1581,8 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                             backgroundColor: colors.accent,
                             foregroundColor: colors.onAccent,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                           ),
                         ),
                       ],
@@ -1417,120 +1592,86 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
               )
             else if (_spaces.isEmpty)
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: Center(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  width: 80,
-                                  height: 80,
-                                  decoration: BoxDecoration(
-                                    color: colors.card,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: colors.outline),
-                                  ),
-                                  child: Icon(
-                                    Icons.near_me_outlined,
-                                    size: 38,
-                                    color: colors.disabled,
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                Text(
-                                  'No spaces nearby',
-                                  style: TextStyle(
-                                    color: colors.primaryText,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  child: Text(
-                                    "We couldn't find spaces around your current location.",
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: colors.secondaryText,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                OutlinedButton.icon(
-                                  onPressed: widget.onChangeLocation,
-                                  icon: Icon(Icons.edit_location_alt_rounded, size: 16, color: colors.secondaryText),
-                                  label: Text('Change Location', style: TextStyle(color: colors.primaryText, fontSize: 14, fontWeight: FontWeight.w600)),
-                                  style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: colors.outline),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                child: Stack(
+                  children: [
+                    _EmptyState(
+                      icon: Icons.radar_rounded,
+                      title: 'No spaces nearby',
+                      subtitle:
+                          "We couldn't find spaces around your current location.",
+                      actionLabel: 'Change Location',
+                      onAction: widget.onChangeLocation,
+                    ),
+                    Positioned(
+                      left: 24,
+                      right: 24,
+                      bottom: 20,
+                      child: _SpaceButton(
+                        label: 'Create a Space',
+                        icon: Icons.add_rounded,
+                        onPressed: widget.onCreateSpace,
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        child: _SpaceButton(
-                          label: 'Create a Space',
-                          icon: Icons.add_rounded,
-                          onPressed: widget.onCreateSpace,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               )
             else
               Expanded(
                 child: Stack(
                   children: [
-                    ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
-                      itemCount: _spaces.length,
-                      itemBuilder: (context, index) {
-                        final space = _spaces[index];
-                        return TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: Duration(milliseconds: 200 + (index * 40).clamp(0, 300)),
-                          builder: (context, value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, (1 - value) * 12),
-                                child: child,
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final columns = constraints.maxWidth >= 920
+                            ? 3
+                            : constraints.maxWidth >= 620
+                            ? 2
+                            : 1;
+                        return GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 112),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: columns,
+                                crossAxisSpacing: 18,
+                                mainAxisSpacing: 18,
+                                childAspectRatio: columns == 1 ? 1.06 : 0.88,
+                              ),
+                          itemCount: _spaces.length,
+                          itemBuilder: (context, index) {
+                            final space = _spaces[index];
+                            return TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: Duration(
+                                milliseconds: 220 + (index * 45).clamp(0, 320),
+                              ),
+                              builder: (context, value, child) {
+                                return Opacity(
+                                  opacity: value,
+                                  child: Transform.translate(
+                                    offset: Offset(0, (1 - value) * 14),
+                                    child: child,
+                                  ),
+                                );
+                              },
+                              child: _SpaceCard(
+                                name: space.name,
+                                description: space.description,
+                                distance: space.distanceMeters,
+                                memberCount: space.memberCount,
+                                joined: space.joined,
+                                loading: _joiningId == space.id,
+                                onTap: _joiningId == null
+                                    ? () => _join(space)
+                                    : null,
                               ),
                             );
                           },
-                          child: _SpaceCard(
-                            name: space.name,
-                            distance: space.distanceMeters,
-                            memberCount: space.memberCount,
-                            joined: space.joined,
-                            loading: _joiningId == space.id,
-                            onTap: _joiningId == null
-                                ? () => _join(space)
-                                : null,
-                          ),
                         );
                       },
                     ),
                     Positioned(
-                      left: 20,
-                      right: 20,
-                      bottom: 20,
-                      child: _SpaceButton(
-                        label: 'Create a Space',
+                      right: 24,
+                      bottom: 22,
+                      child: _GradientFab(
                         icon: Icons.add_rounded,
                         onPressed: widget.onCreateSpace,
                       ),
@@ -1598,14 +1739,14 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
   }
 
   Space _toSpace(SpaceData data) => Space(
-        id: data.id,
-        name: data.name,
-        visibility: data.visibility,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        radiusMeters: data.radiusMeters,
-        createdAt: DateTime.now(),
-      );
+    id: data.id,
+    name: data.name,
+    visibility: data.visibility,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    radiusMeters: data.radiusMeters,
+    createdAt: DateTime.now(),
+  );
 
   Future<void> _open(SpaceData data) async {
     if (_openingId != null) return;
@@ -1624,54 +1765,44 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _SpaceTopBar(
+              centerTitle: 'Space',
+              leadingIcon: Icons.refresh_rounded,
+              onLeading: _load,
+              trailingIcon: widget.isDark
+                  ? Icons.light_mode_rounded
+                  : Icons.dark_mode_rounded,
+              onTrailing: widget.onToggleTheme,
+            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'My Spaces',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: colors.primaryText,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Spaces you are in',
-                          style: TextStyle(
-                            color: colors.secondaryText,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
+                  Text(
+                    'My Spaces',
+                    style: TextStyle(
+                      fontFamily: 'Montserrat',
+                      fontSize: 32,
+                      height: 1.15,
+                      fontWeight: FontWeight.w800,
+                      color: colors.primaryText,
                     ),
                   ),
-                  if (widget.onToggleTheme != null)
-                    IconButton(
-                      onPressed: widget.onToggleTheme,
-                      icon: Icon(
-                        widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                        color: colors.secondaryText,
-                      ),
-                      tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
-                    ),
-                  IconButton(
-                    onPressed: _load,
-                    icon: Icon(Icons.refresh_rounded,
-                        color: colors.secondaryText),
-                    tooltip: 'Refresh',
+                  const SizedBox(height: 12),
+                  _GlassChip(
+                    icon: Icons.layers_rounded,
+                    label: '${_spaces.length} active memberships',
+                    accent: colors.accent,
                   ),
                 ],
               ),
             ),
             if (_loading)
               Expanded(
-                child: Center(child: CircularProgressIndicator(color: colors.accent)),
+                child: Center(
+                  child: CircularProgressIndicator(color: colors.accent),
+                ),
               )
             else if (_error != null)
               Expanded(
@@ -1680,8 +1811,10 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_error!,
-                            style: TextStyle(color: colors.secondaryText)),
+                        Text(
+                          _error!,
+                          style: TextStyle(color: colors.secondaryText),
+                        ),
                         const SizedBox(height: 16),
                         FilledButton.icon(
                           onPressed: _load,
@@ -1695,49 +1828,43 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
               )
             else if (_spaces.isEmpty)
               Expanded(
-                child: Center(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.forum_outlined,
-                            size: 48, color: colors.disabled),
-                        const SizedBox(height: 16),
-                        Text(
-                          'You are not in any Spaces',
-                          style: TextStyle(
-                            color: colors.secondaryText,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Join one from the Discover tab',
-                          style: TextStyle(
-                            color: colors.disabled,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                child: _EmptyState(
+                  icon: Icons.layers_outlined,
+                  title: 'You are not in any Spaces',
+                  subtitle: 'Join one from the Discovery tab',
+                  actionLabel: null,
+                  onAction: null,
                 ),
               )
             else
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-                  itemCount: _spaces.length,
-                  itemBuilder: (context, index) {
-                    final space = _spaces[index];
-                    return _SpaceCard(
-                      name: space.name,
-                      memberCount: space.memberCount,
-                      joined: true,
-                      loading: _openingId == space.id,
-                      onTap: _openingId == null
-                          ? () => _open(space)
-                          : null,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 920
+                        ? 3
+                        : constraints.maxWidth >= 620
+                        ? 2
+                        : 1;
+                    return GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 112),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 18,
+                        mainAxisSpacing: 18,
+                        childAspectRatio: columns == 1 ? 1.06 : 0.88,
+                      ),
+                      itemCount: _spaces.length,
+                      itemBuilder: (context, index) {
+                        final space = _spaces[index];
+                        return _SpaceCard(
+                          name: space.name,
+                          description: space.description,
+                          memberCount: space.memberCount,
+                          joined: true,
+                          loading: _openingId == space.id,
+                          onTap: _openingId == null ? () => _open(space) : null,
+                        );
+                      },
                     );
                   },
                 ),
@@ -1750,6 +1877,303 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
 }
 
 // Reusable widgets
+class _SpaceTopBar extends StatelessWidget {
+  const _SpaceTopBar({
+    required this.centerTitle,
+    required this.leadingIcon,
+    required this.onLeading,
+    required this.trailingIcon,
+    required this.onTrailing,
+  });
+
+  final String centerTitle;
+  final IconData leadingIcon;
+  final VoidCallback? onLeading;
+  final IconData trailingIcon;
+  final VoidCallback? onTrailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          height: 64,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.58),
+            border: Border(bottom: BorderSide(color: colors.outline)),
+          ),
+          child: Row(
+            children: [
+              _GlassIconButton(icon: leadingIcon, onPressed: onLeading),
+              Expanded(
+                child: Text(
+                  centerTitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Montserrat',
+                    fontSize: 31,
+                    fontWeight: FontWeight.w800,
+                    color: colors.accent,
+                  ),
+                ),
+              ),
+              _GlassIconButton(icon: trailingIcon, onPressed: onTrailing),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({
+    required this.child,
+    this.padding = const EdgeInsets.all(18),
+    this.borderRadius = 24,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: isDark
+                ? colors.card.withValues(alpha: 0.62)
+                : Colors.white.withValues(alpha: 0.46),
+            borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.white.withValues(alpha: 0.82),
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassIconButton extends StatelessWidget {
+  const _GlassIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.foregroundColor,
+  });
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Color? foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: IconButton(
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          backgroundColor: colors.chipBackground,
+          disabledBackgroundColor: colors.chipBackground,
+          foregroundColor: foregroundColor ?? colors.accent,
+          disabledForegroundColor: colors.disabled,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+            side: BorderSide(color: colors.outline),
+          ),
+        ),
+        icon: Icon(icon, size: 21),
+      ),
+    );
+  }
+}
+
+class _GlassChip extends StatelessWidget {
+  const _GlassChip({required this.label, required this.accent, this.icon});
+
+  final String label;
+  final Color accent;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      decoration: BoxDecoration(
+        color: colors.chipBackground,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.outline),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: accent),
+            const SizedBox(width: 7),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: accent,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.7,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GradientFab extends StatelessWidget {
+  const _GradientFab({required this.icon, required this.onPressed});
+
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.36),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Icon(icon, color: colors.onAccent, size: 31),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _GlassPanel(
+              borderRadius: 999,
+              padding: const EdgeInsets.all(22),
+              child: Icon(icon, size: 42, color: colors.accent),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Montserrat',
+                color: colors.primaryText,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: colors.secondaryText,
+                fontSize: 14,
+                height: 1.35,
+              ),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: onAction,
+                icon: Icon(
+                  Icons.edit_location_alt_rounded,
+                  size: 16,
+                  color: colors.accent,
+                ),
+                label: Text(
+                  actionLabel!,
+                  style: TextStyle(
+                    color: colors.primaryText,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: colors.outline),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SpaceButton extends StatelessWidget {
   const _SpaceButton({
     required this.label,
@@ -1766,26 +2190,44 @@ class _SpaceButton extends StatelessWidget {
     final colors = SpaceColors.of(context);
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(19),
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(
+          colors: [colors.accent, const Color(0xFFD0BCFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         boxShadow: [
           BoxShadow(
-            color: colors.accent.withValues(alpha: 0.18),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+            color: colors.accent.withValues(alpha: 0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: FilledButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 20),
-        label: Text(label),
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(54),
-          backgroundColor: colors.accent,
-          foregroundColor: colors.onAccent,
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onPressed,
+          child: Container(
+            height: 56,
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 20, color: const Color(0xFF001A42)),
+                const SizedBox(width: 10),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Color(0xFF001A42),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1795,6 +2237,7 @@ class _SpaceButton extends StatelessWidget {
 class _SpaceCard extends StatelessWidget {
   const _SpaceCard({
     required this.name,
+    this.description,
     this.distance = 0,
     this.memberCount = 0,
     this.joined = false,
@@ -1803,6 +2246,7 @@ class _SpaceCard extends StatelessWidget {
   });
 
   final String name;
+  final String? description;
   final double distance;
   final int memberCount;
   final bool joined;
@@ -1812,137 +2256,161 @@ class _SpaceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final icon = joined ? Icons.forum_rounded : _spaceIcon(name);
+    final activeColor = joined ? const Color(0xFFD0BCFF) : colors.accent;
+    final body = description?.trim();
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(28),
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: joined
-                ? colors.accent.withValues(alpha: 0.08)
-                : colors.card,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: joined
-                  ? colors.accent.withValues(alpha: 0.35)
-                  : colors.outline,
-            ),
-            boxShadow: isDark
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-          ),
-          child: Row(
+        child: _GlassPanel(
+          borderRadius: 28,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: joined
-                      ? colors.accent.withValues(alpha: 0.16)
-                      : colors.chipBackground,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  joined ? Icons.forum_rounded : Icons.radar_rounded,
-                  color: joined ? colors.accent : colors.secondaryText,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: colors.primaryText,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          activeColor.withValues(alpha: 0.92),
+                          const Color(0xFF8B5CF6).withValues(alpha: 0.82),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        if (distance > 0) ...[
-                          Icon(Icons.near_me_outlined,
-                              size: 13, color: colors.secondaryText),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${distance.toStringAsFixed(0)}m away',
-                            style: TextStyle(
-                              color: colors.secondaryText,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                        if (memberCount > 0) ...[
-                          const SizedBox(width: 12),
-                          Icon(Icons.people_outline_rounded,
-                              size: 13, color: colors.secondaryText),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$memberCount',
-                            style: TextStyle(
-                              color: colors.secondaryText,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
+                      boxShadow: [
+                        BoxShadow(
+                          color: activeColor.withValues(alpha: 0.24),
+                          blurRadius: 18,
+                        ),
                       ],
                     ),
-                  ],
+                    child: Icon(icon, color: colors.onAccent, size: 24),
+                  ),
+                  const Spacer(),
+                  if (loading)
+                    SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.accent,
+                      ),
+                    )
+                  else
+                    _GlassChip(
+                      icon: joined
+                          ? Icons.check_circle_rounded
+                          : Icons.radar_rounded,
+                      label: joined ? 'Joined' : _formatDistance(distance),
+                      accent: activeColor,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'Montserrat',
+                  fontSize: 21,
+                  height: 1.12,
+                  fontWeight: FontWeight.w800,
+                  color: colors.primaryText,
                 ),
               ),
-              if (joined)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: colors.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(999),
+              if (body != null && body.isNotEmpty) ...[
+                const SizedBox(height: 7),
+                Text(
+                  body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.secondaryText,
+                    fontSize: 14,
+                    height: 1.35,
                   ),
-                  child: Text(
-                    'Joined',
-                    style: TextStyle(
-                      color: colors.accent,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                ),
+              ],
+              const Spacer(),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  if (memberCount > 0)
+                    _GlassChip(
+                      icon: Icons.people_alt_rounded,
+                      label: '$memberCount Active',
+                      accent: colors.secondaryText,
                     ),
+                  _GlassChip(
+                    icon: Icons.public_rounded,
+                    label: joined ? 'Open Channel' : 'Nearby',
+                    accent: colors.secondaryText,
                   ),
-                )
-              else if (loading)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.accent,
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: activeColor.withValues(alpha: 0.72),
                   ),
-                )
-              else
-                Icon(Icons.chevron_right_rounded,
-                    color: colors.disabled),
+                  boxShadow: [
+                    BoxShadow(
+                      color: activeColor.withValues(alpha: 0.14),
+                      blurRadius: 16,
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  joined ? 'Enter Space' : 'Join Sequence',
+                  style: TextStyle(
+                    color: activeColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  IconData _spaceIcon(String seed) {
+    final icons = [
+      Icons.terminal_rounded,
+      Icons.headphones_rounded,
+      Icons.local_cafe_rounded,
+      Icons.nightlife_rounded,
+      Icons.restaurant_rounded,
+      Icons.bolt_rounded,
+      Icons.blur_on_rounded,
+    ];
+    return icons[seed.hashCode.abs() % icons.length];
+  }
+
+  String _formatDistance(double value) {
+    if (value <= 0) return 'In Range';
+    if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)}km';
+    return '${value.toStringAsFixed(0)}m';
   }
 }
 
@@ -1952,12 +2420,14 @@ class ChatComposer extends StatelessWidget {
     required this.controller,
     required this.onSend,
     this.replyingTo,
+    this.spaceName,
     this.onCancelReply,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
   final ChatMessage? replyingTo;
+  final String? spaceName;
   final VoidCallback? onCancelReply;
 
   @override
@@ -1966,86 +2436,133 @@ class ChatComposer extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 18),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 8, 8, 8),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: colors.outline),
-          ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (replyingTo != null)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: colors.card,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: colors.outlineSubtle),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.reply_rounded,
-                          size: 14, color: colors.secondaryText),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Replying to ${replyingTo!.name}: '
-                          '${replyingTo!.text}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colors.secondaryText,
-                            fontSize: 12,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: _GlassPanel(
+                    borderRadius: 18,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.reply_rounded,
+                          size: 17,
+                          color: colors.accent,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Replying to ${replyingTo!.name}: '
+                            '${replyingTo!.text}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.secondaryText,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                      if (onCancelReply != null)
-                        GestureDetector(
-                          onTap: onCancelReply,
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 16,
-                            color: colors.disabled,
+                        if (onCancelReply != null)
+                          GestureDetector(
+                            onTap: onCancelReply,
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: colors.disabled,
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: controller,
-                      minLines: 1,
-                      maxLines: 4,
-                      style: TextStyle(fontSize: 15, color: colors.primaryText),
-                      decoration: InputDecoration(
-                        hintText: 'Message...',
-                        hintStyle: TextStyle(color: colors.disabled),
-                        border: InputBorder.none,
-                      ),
-                      onSubmitted: (_) => onSend(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: onSend,
-                    style: IconButton.styleFrom(
-                      backgroundColor: colors.accent,
-                      foregroundColor: colors.onAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(17),
+              Container(
+                color: colors.surface.withValues(alpha: 0.78),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Icon(
+                        Icons.add_circle_rounded,
+                        color: colors.secondaryText,
+                        size: 28,
                       ),
                     ),
-                    icon: const Icon(Icons.arrow_forward_rounded),
-                  ),
-                ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _GlassPanel(
+                        borderRadius: 28,
+                        padding: const EdgeInsets.fromLTRB(16, 2, 10, 2),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: controller,
+                                minLines: 1,
+                                maxLines: 4,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: colors.primaryText,
+                                ),
+                                decoration: InputDecoration(
+                                  hintText:
+                                      'Message ${spaceName ?? 'Space'}...',
+                                  hintStyle: TextStyle(color: colors.disabled),
+                                  border: InputBorder.none,
+                                ),
+                                onSubmitted: (_) => onSend(),
+                              ),
+                            ),
+                            Icon(
+                              Icons.mood_rounded,
+                              size: 21,
+                              color: colors.disabled,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: onSend,
+                      child: Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [colors.accent, const Color(0xFF8B5CF6)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: colors.accent.withValues(alpha: 0.24),
+                              blurRadius: 20,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          Icons.send_rounded,
+                          color: colors.onAccent,
+                          size: 21,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -2059,114 +2576,184 @@ class MessageCard extends StatelessWidget {
   const MessageCard({
     super.key,
     required this.message,
+    required this.isMine,
     this.onLongPress,
   });
 
   final ChatMessage message;
+  final bool isMine;
   final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final bubbleRadius = BorderRadius.only(
+      topLeft: const Radius.circular(22),
+      topRight: const Radius.circular(22),
+      bottomLeft: Radius.circular(isMine ? 22 : 5),
+      bottomRight: Radius.circular(isMine ? 5 : 22),
+    );
 
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colors.outline),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                StatusDot(color: colors.accent),
-                const SizedBox(width: 9),
-                Text(
-                  message.name,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: colors.primaryText,
-                  ),
-                ),
-              ],
-            ),
-            if (message.replyText != null) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: colors.outlineSubtle),
-                ),
-                child: Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Align(
+          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.82),
+            child: GestureDetector(
+              onLongPress: onLongPress,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: isMine
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.reply_rounded,
-                        size: 13, color: colors.secondaryText),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '${message.replyText}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.secondaryText,
-                          fontSize: 12,
+                    if (!isMine)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 10, bottom: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              message.name,
+                              style: TextStyle(
+                                color: colors.secondaryText,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            if (message.createdAt != null) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                _formatMessageTime(message.createdAt!),
+                                style: TextStyle(
+                                  color: colors.disabled,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        borderRadius: bubbleRadius,
+                        gradient: isMine
+                            ? const LinearGradient(
+                                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: isMine ? null : colors.card,
+                        border: isMine
+                            ? null
+                            : Border.all(color: colors.outline),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (isMine ? colors.accent : Colors.black)
+                                .withValues(alpha: isMine ? 0.16 : 0.05),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (message.replyText != null) ...[
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isMine
+                                    ? Colors.white.withValues(alpha: 0.16)
+                                    : colors.accent.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border(
+                                  left: BorderSide(
+                                    color: isMine
+                                        ? Colors.white
+                                        : colors.accent,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                '${message.replyText}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isMine
+                                      ? Colors.white
+                                      : colors.secondaryText,
+                                  fontSize: 12,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ],
+                          Text(
+                            message.text,
+                            style: TextStyle(
+                              fontSize: 16,
+                              height: 1.38,
+                              color: isMine ? Colors.white : colors.primaryText,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Text(
-              message.text,
-              style: TextStyle(
-                fontSize: 16,
-                height: 1.35,
-                color: colors.primaryText,
-              ),
-            ),
-            if (message.reactions.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final entry in message.reactions.entries)
-                    if (entry.value > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: colors.surface,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: colors.outlineSubtle),
-                        ),
+                    if (message.reactions.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final entry in message.reactions.entries)
+                            if (entry.value > 0)
+                              _GlassChip(
+                                label: '${entry.key} ${entry.value}',
+                                accent: colors.accent,
+                              ),
+                        ],
+                      ),
+                    ],
+                    if (isMine && message.createdAt != null) ...[
+                      const SizedBox(height: 5),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 10),
                         child: Text(
-                          '${entry.key} ${entry.value}',
+                          _formatMessageTime(message.createdAt!),
                           style: TextStyle(
-                            color: colors.secondaryText,
-                            fontSize: 12,
+                            color: colors.disabled,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                ],
+                    ],
+                  ],
+                ),
               ),
-            ],
-            const SizedBox(height: 4),
-          ],
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  String _formatMessageTime(DateTime value) {
+    final local = value.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 }
 
@@ -2196,10 +2783,7 @@ class StepCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            step,
-            style: TextStyle(color: colors.disabled, fontSize: 12),
-          ),
+          Text(step, style: TextStyle(color: colors.disabled, fontSize: 12)),
           const SizedBox(height: 5),
           Text(
             title,
@@ -2255,47 +2839,51 @@ class ChoicePill extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.icon,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: selected
               ? colors.accent.withValues(alpha: 0.14)
-              : colors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected
-                ? colors.accent
-                : colors.outline,
-          ),
+              : colors.chipBackground,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: selected ? colors.accent : colors.outline),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            StatusDot(
-              color: selected ? colors.accent : colors.disabled,
-              hollow: !selected,
-            ),
+            if (icon != null)
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? colors.accent : colors.secondaryText,
+              )
+            else
+              StatusDot(
+                color: selected ? colors.accent : colors.disabled,
+                hollow: !selected,
+              ),
             const SizedBox(width: 9),
             Text(
               label,
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: colors.primaryText,
+                color: selected ? colors.accent : colors.primaryText,
               ),
             ),
           ],
@@ -2306,10 +2894,14 @@ class ChoicePill extends StatelessWidget {
 }
 
 class GeofenceDecisionPanel extends StatelessWidget {
-  const GeofenceDecisionPanel(
-      {super.key, required this.validation});
+  const GeofenceDecisionPanel({
+    super.key,
+    required this.validation,
+    this.compact = false,
+  });
 
   final GeofenceValidationResult validation;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -2329,51 +2921,49 @@ class GeofenceDecisionPanel extends StatelessWidget {
       GeofenceDecision.rejected => 'Rejected',
     };
 
-    return Container(
+    if (compact) {
+      return _GlassChip(icon: Icons.radar_rounded, label: label, accent: color);
+    }
+
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.outline),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.12),
-              border: Border.all(color: color.withValues(alpha: 0.3)),
+      child: _GlassPanel(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color.withValues(alpha: 0.12),
+                border: Border.all(color: color.withValues(alpha: 0.3)),
+              ),
+              child: Icon(Icons.radar_rounded, color: color, size: 20),
             ),
-            child: Icon(Icons.radar_rounded, color: color, size: 20),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: colors.primaryText,
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: colors.primaryText,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${validation.distanceMeters.toStringAsFixed(1)}m from center',
-                  style: TextStyle(
-                    color: colors.secondaryText,
-                    fontSize: 12,
+                  const SizedBox(height: 4),
+                  Text(
+                    '${validation.distanceMeters.toStringAsFixed(1)}m from center',
+                    style: TextStyle(color: colors.secondaryText, fontSize: 12),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2397,25 +2987,57 @@ class SpaceButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
 
-    return FilledButton.icon(
-      onPressed: onPressed,
-      icon: loading
-          ? SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: colors.onAccent,
-              ),
-            )
-          : Icon(icon, size: 19),
-      label: Text(label),
-      style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(54),
-        backgroundColor: colors.accent,
-        foregroundColor: colors.onAccent,
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(
+          colors: [colors.accent, const Color(0xFFD0BCFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colors.accent.withValues(alpha: 0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: loading ? null : onPressed,
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            height: 56,
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (loading)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF001A42),
+                    ),
+                  )
+                else
+                  Icon(icon, size: 20, color: const Color(0xFF001A42)),
+                const SizedBox(width: 10),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Color(0xFF001A42),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2429,30 +3051,101 @@ class SpaceScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.topRight,
-            radius: 1.2,
-            colors: [colors.gradientTop, colors.gradientBottom],
-            stops: const [0, 0.58],
-          ),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: child,
+      body: DecoratedBox(
+        decoration: BoxDecoration(color: colors.background),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.topRight,
+                    radius: 1.18,
+                    colors: [
+                      colors.gradientTop.withValues(alpha: isDark ? 0.92 : 0.7),
+                      colors.gradientBottom,
+                    ],
+                    stops: const [0, 0.62],
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.centerLeft,
+                    radius: 1.08,
+                    colors: [
+                      colors.accent.withValues(alpha: isDark ? 0.07 : 0.10),
+                      Colors.transparent,
+                    ],
+                    stops: const [0, 0.48],
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _StarfieldPainter(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.16)
+                      : colors.accent.withValues(alpha: 0.10),
+                ),
+              ),
+            ),
+            Material(color: Colors.transparent, child: child),
+          ],
         ),
       ),
     );
   }
 }
 
+class _StarfieldPainter extends CustomPainter {
+  const _StarfieldPainter({required this.color});
+
+  final Color color;
+
+  static const _stars = <Offset>[
+    Offset(0.08, 0.10),
+    Offset(0.18, 0.28),
+    Offset(0.31, 0.16),
+    Offset(0.43, 0.34),
+    Offset(0.58, 0.12),
+    Offset(0.72, 0.24),
+    Offset(0.86, 0.10),
+    Offset(0.92, 0.42),
+    Offset(0.13, 0.58),
+    Offset(0.37, 0.70),
+    Offset(0.67, 0.62),
+    Offset(0.82, 0.78),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    for (final star in _stars) {
+      canvas.drawCircle(
+        Offset(star.dx * size.width, star.dy * size.height),
+        1.1,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _StarfieldPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
 class StatusDot extends StatelessWidget {
-  const StatusDot(
-      {super.key, required this.color, this.hollow = false});
+  const StatusDot({super.key, required this.color, this.hollow = false});
 
   final Color color;
   final bool hollow;
@@ -2500,6 +3193,7 @@ class ChatMessage {
     required this.reactions,
     this.replyTo,
     this.replyText,
+    this.createdAt,
   });
 
   final String id;
@@ -2508,6 +3202,7 @@ class ChatMessage {
   final Color color;
   final String? replyTo;
   final String? replyText;
+  final DateTime? createdAt;
   final Map<String, int> reactions;
 }
 
