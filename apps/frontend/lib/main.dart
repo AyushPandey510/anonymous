@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:space_mobile/features/location/data/location_service.dart';
@@ -10,6 +11,7 @@ import 'package:space_mobile/features/location/domain/geo_point.dart';
 import 'package:space_mobile/features/location/domain/location_fix.dart';
 import 'package:space_mobile/features/location/presentation/interactive_geofence_map.dart';
 import 'package:space_mobile/features/location/presentation/location_selection_screen.dart';
+import 'package:space_mobile/features/splash/animated_splash_screen.dart';
 import 'package:space_mobile/services/api_client.dart';
 import 'package:space_mobile/services/api_service.dart';
 import 'package:space_mobile/services/auth_service.dart';
@@ -20,10 +22,7 @@ void main() {
   runApp(const SpaceApp());
 }
 
-const apiBaseUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: 'http://localhost:8080',
-);
+String get defaultApiBaseUrl => AppConfig.apiBaseUrl;
 
 class SpaceApp extends StatefulWidget {
   const SpaceApp({super.key});
@@ -72,7 +71,8 @@ class AppLoader extends StatefulWidget {
 }
 
 class _AppLoaderState extends State<AppLoader> {
-  final _client = ApiClient(apiBaseUrl);
+  late final String _baseUrl;
+  late final ApiClient _client;
   late final AuthService _auth;
   late final ApiService _api;
   bool _ready = false;
@@ -81,24 +81,39 @@ class _AppLoaderState extends State<AppLoader> {
   @override
   void initState() {
     super.initState();
+    _baseUrl = defaultApiBaseUrl;
+    _client = ApiClient(_baseUrl);
     _auth = AuthService(_client);
     _api = ApiService(_client);
     _init();
   }
 
   Future<void> _init() async {
+    debugPrint('[Space App] 🚀 Initializing backend connection: $_baseUrl ...');
+    final stopwatch = Stopwatch()..start();
     try {
       await _auth.init();
       final loggedIn = await _auth.ensureLoggedIn();
       if (!mounted) return;
       if (loggedIn) {
+        debugPrint('[Space App] ✅ Session ready! Entering Space.');
+        final elapsed = stopwatch.elapsedMilliseconds;
+        if (elapsed < 2600) {
+          await Future.delayed(Duration(milliseconds: 2600 - elapsed));
+        }
+        if (!mounted) return;
         setState(() => _ready = true);
       } else {
-        setState(() => _error = 'Could not connect to server');
+        final reason = _auth.lastError ?? 'Connection refused';
+        debugPrint('[Space App] ❌ Authentication failed for $_baseUrl: $reason');
+        setState(() {
+          _error = 'Could not connect to server at $_baseUrl\n\n$reason';
+        });
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      debugPrint('[Space App] ❌ Connection error for $_baseUrl: $e');
+      setState(() => _error = 'Could not connect to server at $_baseUrl\n\n$e');
     }
   }
 
@@ -128,6 +143,14 @@ class _AppLoaderState extends State<AppLoader> {
                   },
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Retry'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    foregroundColor: colors.onAccent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
                 ),
               ],
             ),
@@ -241,14 +264,11 @@ class _SpaceShellState extends State<SpaceShell> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(
           'Left Space Area',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: colors.primaryText,
-          ),
+          style: SpaceTypography.headingMedium(color: colors.primaryText),
         ),
         content: Text(
           'You have moved outside the Space geofence. You will be removed from this Space.',
-          style: TextStyle(color: colors.secondaryText),
+          style: SpaceTypography.bodyMedium(color: colors.secondaryText),
         ),
         actions: [
           FilledButton(
@@ -425,8 +445,8 @@ class _SpaceShellState extends State<SpaceShell> {
             : 'Could not join: ${e.toString()}';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(message, style: TextStyle(color: colors.primaryText)),
-            backgroundColor: colors.card,
+            content: Text(message, style: SpaceTypography.bodyMedium(color: colors.primaryText)),
+            backgroundColor: colors.surface2,
           ),
         );
       }
@@ -668,6 +688,16 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
                       validation: validation,
                       compact: true,
                     ),
+                    if (widget.onToggleTheme != null)
+                      IconButton(
+                        onPressed: widget.onToggleTheme,
+                        icon: Icon(
+                          widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                          color: colors.secondaryText,
+                          size: 20,
+                        ),
+                        tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
+                      ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -852,6 +882,60 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
   }
 }
 
+class _VisibilityOptionPill extends StatelessWidget {
+  const _VisibilityOptionPill({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? colors.accent.withValues(alpha: 0.12) : colors.surface2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? colors.accent : colors.outline,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? colors.accent : colors.disabled,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: SpaceTypography.bodyMedium(
+                color: selected ? colors.primaryText : colors.secondaryText,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
@@ -1027,7 +1111,7 @@ class ChatScreenState extends State<ChatScreen> {
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1123,7 +1207,7 @@ class ChatScreenState extends State<ChatScreen> {
         ),
         content: Text(
           'This removes the message for everyone. Available within 15 minutes of sending.',
-          style: TextStyle(color: colors.secondaryText),
+          style: SpaceTypography.bodyMedium(color: colors.secondaryText),
         ),
         actions: [
           TextButton(
@@ -1203,7 +1287,10 @@ class ChatScreenState extends State<ChatScreen> {
                 Navigator.of(dialogContext).pop();
                 _sendReport(message, reason);
               },
-              child: Text(reason, style: TextStyle(color: colors.primaryText)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(reason, style: SpaceTypography.bodyLarge(color: colors.primaryText)),
+              ),
             ),
         ],
       ),
@@ -1252,6 +1339,7 @@ class ChatScreenState extends State<ChatScreen> {
       child: SpaceScaffold(
         child: Column(
           children: [
+            // Top Header: Globe (Left) • Space Name & Alias (Center) • Actions (Right)
             SafeArea(
               bottom: false,
               child: Padding(
@@ -1314,6 +1402,15 @@ class ChatScreenState extends State<ChatScreen> {
                                   ),
                                 ),
                               ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Alias: ${widget.anonymousName}',
+                              style: SpaceTypography.technical(
+                                color: colors.tertiary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
@@ -1473,19 +1570,20 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour >= 5 && hour < 12) {
-      return 'Good morning';
+      return 'Good Morning,';
     } else if (hour >= 12 && hour < 17) {
-      return 'Good afternoon';
+      return 'Good Afternoon,';
     } else if (hour >= 17 && hour < 21) {
-      return 'Good evening';
+      return 'Good Evening,';
     } else {
-      return 'Good night';
+      return 'Good Night,';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SpaceScaffold(
       child: SafeArea(
@@ -1534,6 +1632,8 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                 ],
               ),
             ),
+
+            // Spaces List / Loading / Error / Empty States
             if (_loading)
               Expanded(
                 child: Center(
@@ -1557,11 +1657,8 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                         const SizedBox(height: 16),
                         Text(
                           'Unable to load nearby spaces',
-                          style: TextStyle(
-                            color: colors.primaryText,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: SpaceTypography.headingSmall(
+                              color: colors.primaryText),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -1572,7 +1669,7 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                             fontSize: 14,
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 18),
                         FilledButton.icon(
                           onPressed: _discover,
                           icon: const Icon(Icons.refresh_rounded, size: 18),
@@ -1985,6 +2082,7 @@ class _GlassIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SizedBox(
       width: 44,
@@ -2433,6 +2531,7 @@ class ChatComposer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SafeArea(
       top: false,
@@ -2560,8 +2659,8 @@ class ChatComposer extends StatelessWidget {
                           size: 21,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -2777,7 +2876,7 @@ class StepCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: colors.card,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: colors.outline),
       ),
       child: Column(
@@ -2787,11 +2886,7 @@ class StepCard extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: colors.primaryText,
-            ),
+            style: SpaceTypography.headingSmall(color: colors.primaryText),
           ),
           const SizedBox(height: 14),
           child,
@@ -2802,9 +2897,10 @@ class StepCard extends StatelessWidget {
 }
 
 class SpaceTextField extends StatelessWidget {
-  const SpaceTextField({super.key, required this.controller});
+  const SpaceTextField({super.key, required this.controller, this.hintText});
 
   final TextEditingController controller;
+  final String? hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -2812,21 +2908,24 @@ class SpaceTextField extends StatelessWidget {
 
     return TextField(
       controller: controller,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: colors.primaryText,
-      ),
+      style: SpaceTypography.bodyLarge(color: colors.primaryText, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
         filled: true,
-        fillColor: colors.surface,
+        fillColor: colors.surface2,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
-          borderSide: BorderSide.none,
-          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.outline),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: colors.outline),
+          borderRadius: BorderRadius.circular(16),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: colors.accent),
-          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.accent, width: 1.5),
+          borderRadius: BorderRadius.circular(16),
         ),
       ),
     );
@@ -2907,16 +3006,16 @@ class GeofenceDecisionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
     final color = switch (validation.decision) {
-      GeofenceDecision.inside => colors.accent,
+      GeofenceDecision.inside => colors.tertiary,
       GeofenceDecision.nearBoundary => colors.warning,
       GeofenceDecision.outside => colors.dangerStrong,
       GeofenceDecision.lowAccuracy => colors.warning,
       GeofenceDecision.rejected => colors.dangerStrong,
     };
     final label = switch (validation.decision) {
-      GeofenceDecision.inside => 'Inside',
+      GeofenceDecision.inside => 'Inside perimeter',
       GeofenceDecision.nearBoundary => 'Near boundary',
-      GeofenceDecision.outside => 'Outside',
+      GeofenceDecision.outside => 'Outside perimeter',
       GeofenceDecision.lowAccuracy => 'Low accuracy',
       GeofenceDecision.rejected => 'Rejected',
     };
@@ -3153,8 +3252,8 @@ class StatusDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 11,
-      height: 11,
+      width: 9,
+      height: 9,
       decoration: BoxDecoration(
         color: hollow ? Colors.transparent : color,
         shape: BoxShape.circle,
@@ -3229,13 +3328,13 @@ class _ReactionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(14),
+          color: colors.surface2,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: colors.outline),
         ),
-        child: Text(emoji, style: const TextStyle(fontSize: 20)),
+        child: Text(emoji, style: const TextStyle(fontSize: 19)),
       ),
     );
   }

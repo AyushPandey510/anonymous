@@ -129,8 +129,8 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
                     point: point,
                     radius: widget.radiusMeters.toDouble(),
                     useRadiusInMeter: true,
-                    color: decisionColor.withValues(alpha: 0.12),
-                    borderColor: decisionColor.withValues(alpha: 0.45),
+                    color: decisionColor.withValues(alpha: 0.14),
+                    borderColor: decisionColor.withValues(alpha: 0.55),
                     borderStrokeWidth: 2,
                   ),
                 ],
@@ -305,78 +305,71 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
         1,
         0,
       ]),
-      child: Opacity(opacity: 0.78, child: tileWidget),
+      child: ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          0.30, 0.59, 0.11, 0.0, 0.0,
+          0.30, 0.59, 0.11, 0.0, 0.0,
+          0.30, 0.59, 0.11, 0.0, 0.0,
+          0.00, 0.00, 0.00, 1.0, 0.0,
+        ]),
+        child: tileWidget,
+      ),
     );
-  }
-
-  void _onSearchChanged(String value) {
-    _debounce?.cancel();
-    final query = value.trim();
-    if (query.length < 3) {
-      setState(() {
-        _results = const [];
-        _status = null;
-      });
-      return;
-    }
-
-    _debounce = Timer(const Duration(milliseconds: 380), () async {
-      setState(() {
-        _searching = true;
-        _status = 'Searching...';
-      });
-      try {
-        final results = await _searchRepository.search(query);
-        if (!mounted) return;
-        setState(() {
-          _results = results;
-          _status = results.isEmpty ? 'No matching places found' : null;
-        });
-      } catch (_) {
-        if (!mounted) return;
-        setState(() {
-          _results = const [];
-          _status = 'Search is unavailable';
-        });
-      } finally {
-        if (mounted) setState(() => _searching = false);
-      }
-    });
-  }
-
-  Future<void> _centerOnUser() async {
-    setState(() {
-      _locating = true;
-      _status = 'Locating...';
-    });
-    try {
-      final fix = await _locationService.currentFix();
-      widget.onAccuracyChanged(fix.accuracyMeters ?? 75);
-      _moveTo(_latLng(fix.point), zoom: 17);
-      if (!mounted) return;
-      setState(
-        () => _status = 'Accuracy ${fix.accuracyMeters?.round() ?? '?'}m',
-      );
-    } on SpaceLocationException catch (error) {
-      if (!mounted) return;
-      setState(() => _status = _permissionMessage(error.state));
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _status = 'Could not get current location');
-    } finally {
-      if (mounted) setState(() => _locating = false);
-    }
-  }
-
-  void _moveTo(LatLng point, {required double zoom}) {
-    _mapController.move(point, zoom);
-    _selectPoint(point);
   }
 
   void _selectPoint(LatLng point) {
     widget.onPointChanged(
       GeoPoint(latitude: point.latitude, longitude: point.longitude),
     );
+  }
+
+  void _moveTo(LatLng point, {double? zoom}) {
+    final targetZoom = zoom ?? _mapController.camera.zoom;
+    _mapController.move(point, targetZoom);
+    _selectPoint(point);
+  }
+
+  Future<void> _centerOnUser() async {
+    setState(() => _locating = true);
+    try {
+      final perm = await _locationService.permissionState();
+      if (perm != SpaceLocationPermissionState.granted) {
+        setState(() => _status = _permissionMessage(perm));
+        return;
+      }
+      final fix = await _locationService.currentFix();
+      if (!mounted) return;
+      widget.onAccuracyChanged(fix.accuracyMeters ?? 20);
+      _moveTo(LatLng(fix.point.latitude, fix.point.longitude), zoom: 16);
+      setState(() => _status = null);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _status = 'Could not get current location');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _locating = false);
+      }
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() => _results = const []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 350), () async {
+      setState(() => _searching = true);
+      try {
+        final res = await _searchRepository.search(query);
+        if (mounted) setState(() => _results = res);
+      } catch (_) {
+        if (mounted) setState(() => _results = const []);
+      } finally {
+        if (mounted) setState(() => _searching = false);
+      }
+    });
   }
 
   LatLng _latLng(GeoPoint point) => LatLng(point.latitude, point.longitude);
@@ -395,7 +388,7 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
 
   Color _decisionColor(SpaceColors colors, GeofenceDecision decision) {
     return switch (decision) {
-      GeofenceDecision.inside => colors.accent,
+      GeofenceDecision.inside => colors.tertiary,
       GeofenceDecision.nearBoundary => colors.warning,
       GeofenceDecision.outside => colors.dangerStrong,
       GeofenceDecision.lowAccuracy => colors.warning,

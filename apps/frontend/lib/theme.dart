@@ -6,11 +6,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
   const SpaceColors({
     required this.background,
     required this.surface,
+    required this.surface2,
+    required this.surface3,
     required this.card,
     required this.primaryText,
     required this.secondaryText,
     required this.disabled,
     required this.accent,
+    required this.secondaryAccent,
+    required this.tertiary,
     required this.onAccent,
     required this.danger,
     required this.warning,
@@ -25,11 +29,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
 
   final Color background;
   final Color surface;
+  final Color surface2;
+  final Color surface3;
   final Color card;
   final Color primaryText;
   final Color secondaryText;
   final Color disabled;
   final Color accent;
+  final Color secondaryAccent;
+  final Color tertiary;
   final Color onAccent;
   final Color danger;
   final Color warning;
@@ -88,11 +96,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
   SpaceColors copyWith({
     Color? background,
     Color? surface,
+    Color? surface2,
+    Color? surface3,
     Color? card,
     Color? primaryText,
     Color? secondaryText,
     Color? disabled,
     Color? accent,
+    Color? secondaryAccent,
+    Color? tertiary,
     Color? onAccent,
     Color? danger,
     Color? warning,
@@ -107,11 +119,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
     return SpaceColors(
       background: background ?? this.background,
       surface: surface ?? this.surface,
+      surface2: surface2 ?? this.surface2,
+      surface3: surface3 ?? this.surface3,
       card: card ?? this.card,
       primaryText: primaryText ?? this.primaryText,
       secondaryText: secondaryText ?? this.secondaryText,
       disabled: disabled ?? this.disabled,
       accent: accent ?? this.accent,
+      secondaryAccent: secondaryAccent ?? this.secondaryAccent,
+      tertiary: tertiary ?? this.tertiary,
       onAccent: onAccent ?? this.onAccent,
       danger: danger ?? this.danger,
       warning: warning ?? this.warning,
@@ -131,11 +147,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
     return SpaceColors(
       background: Color.lerp(background, other.background, t)!,
       surface: Color.lerp(surface, other.surface, t)!,
+      surface2: Color.lerp(surface2, other.surface2, t)!,
+      surface3: Color.lerp(surface3, other.surface3, t)!,
       card: Color.lerp(card, other.card, t)!,
       primaryText: Color.lerp(primaryText, other.primaryText, t)!,
       secondaryText: Color.lerp(secondaryText, other.secondaryText, t)!,
       disabled: Color.lerp(disabled, other.disabled, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
+      secondaryAccent: Color.lerp(secondaryAccent, other.secondaryAccent, t)!,
+      tertiary: Color.lerp(tertiary, other.tertiary, t)!,
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
@@ -148,6 +168,116 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
       chipBackground: Color.lerp(chipBackground, other.chipBackground, t)!,
     );
   }
+}
+
+class SpaceTypography {
+  static const fontHeading = 'Montserrat';
+  static const fontBody = 'Hanken Grotesk';
+  static const fontMono = 'JetBrains Mono';
+
+  static TextStyle headingLarge({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w700,
+    double fontSize = 26,
+    double? letterSpacing = -0.4,
+  }) =>
+      TextStyle(
+        fontFamily: fontHeading,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFF8FAFC),
+      );
+
+  static TextStyle headingMedium({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w700,
+    double fontSize = 18,
+    double? letterSpacing = -0.2,
+  }) =>
+      TextStyle(
+        fontFamily: fontHeading,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFF8FAFC),
+      );
+
+  static TextStyle headingSmall({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w600,
+    double fontSize = 15,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: fontHeading,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFF8FAFC),
+      );
+
+  static TextStyle bodyLarge({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w400,
+    double fontSize = 15,
+    double height = 1.4,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: fontBody,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFF8FAFC),
+      );
+
+  static TextStyle bodyMedium({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w400,
+    double fontSize = 13,
+    double height = 1.4,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: fontBody,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFA1AAB8),
+      );
+
+  static TextStyle bodySmall({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w400,
+    double fontSize = 12,
+    double height = 1.3,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: fontBody,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFF6B7280),
+      );
+
+  static TextStyle technical({
+    Color? color,
+    double fontSize = 11,
+    FontWeight fontWeight = FontWeight.w600,
+    double letterSpacing = 0.4,
+  }) =>
+      TextStyle(
+        fontFamily: fontMono,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFA1AAB8),
+      );
 }
 
 ThemeData buildSpaceTheme(Brightness brightness) {
@@ -191,7 +321,10 @@ ThemeData buildSpaceTheme(Brightness brightness) {
     dialogTheme: DialogThemeData(
       backgroundColor: colors.surface,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: colors.outline, width: 1),
+      ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: colors.surface,
@@ -201,23 +334,29 @@ ThemeData buildSpaceTheme(Brightness brightness) {
       ),
     ),
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: colors.card,
-      contentTextStyle: TextStyle(color: colors.primaryText),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: colors.surface2,
+      contentTextStyle: SpaceTypography.bodyMedium(color: colors.primaryText),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.outline, width: 1),
+      ),
       behavior: SnackBarBehavior.floating,
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: colors.navBackground,
-      indicatorColor: colors.accent.withValues(alpha: 0.18),
+      elevation: 0,
+      indicatorColor: colors.accent.withValues(alpha: 0.15),
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
           return TextStyle(
+            fontFamily: SpaceTypography.fontHeading,
             color: colors.accent,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           );
         }
         return TextStyle(
+          fontFamily: SpaceTypography.fontHeading,
           color: colors.disabled,
           fontSize: 12,
           fontWeight: FontWeight.w500,
