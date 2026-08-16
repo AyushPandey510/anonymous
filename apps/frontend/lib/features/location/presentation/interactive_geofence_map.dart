@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -18,6 +19,9 @@ class InteractiveGeofenceMap extends StatefulWidget {
     required this.validation,
     required this.onPointChanged,
     required this.onAccuracyChanged,
+    this.height = 360,
+    this.allowPointSelection = true,
+    this.showSearch = true,
   });
 
   final GeoPoint point;
@@ -25,6 +29,9 @@ class InteractiveGeofenceMap extends StatefulWidget {
   final GeofenceValidationResult validation;
   final ValueChanged<GeoPoint> onPointChanged;
   final ValueChanged<double> onAccuracyChanged;
+  final double? height;
+  final bool allowPointSelection;
+  final bool showSearch;
 
   @override
   State<InteractiveGeofenceMap> createState() => _InteractiveGeofenceMapState();
@@ -72,17 +79,17 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
     final decisionColor = _decisionColor(colors, widget.validation.decision);
 
     return Container(
-      height: 360,
+      height: widget.height,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(22),
+        color: colors.surface.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(color: colors.outline),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: colors.accent.withValues(alpha: isDark ? 0.12 : 0.08),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
@@ -95,14 +102,20 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
               initialZoom: 16,
               minZoom: 3,
               maxZoom: 19,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+              interactionOptions: InteractionOptions(
+                flags: widget.allowPointSelection
+                    ? InteractiveFlag.all & ~InteractiveFlag.rotate
+                    : InteractiveFlag.none,
               ),
               onPositionChanged: (camera, hasGesture) {
-                if (hasGesture) _selectPoint(camera.center);
+                if (hasGesture && widget.allowPointSelection) {
+                  _selectPoint(camera.center);
+                }
               },
-              onLongPress: (_, selected) =>
-                  _moveTo(selected, zoom: _mapController.camera.zoom),
+              onLongPress: widget.allowPointSelection
+                  ? (_, selected) =>
+                        _moveTo(selected, zoom: _mapController.camera.zoom)
+                  : null,
             ),
             children: [
               TileLayer(
@@ -126,12 +139,39 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
                 markers: [
                   Marker(
                     point: point,
-                    width: 56,
-                    height: 56,
-                    child: Icon(
-                      Icons.location_pin,
-                      color: colors.accent,
-                      size: 46,
+                    width: 72,
+                    height: 72,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colors.accent.withValues(alpha: 0.18),
+                        border: Border.all(
+                          color: colors.accent.withValues(alpha: 0.55),
+                          width: 1.6,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.accent.withValues(alpha: 0.30),
+                            blurRadius: 26,
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 13,
+                          height: 13,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: colors.accent,
+                            boxShadow: [
+                              BoxShadow(
+                                color: colors.accent.withValues(alpha: 0.70),
+                                blurRadius: 14,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -149,17 +189,36 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
               ),
             ],
           ),
-          Positioned(
-            left: 12,
-            right: 12,
-            top: 12,
-            child: _SearchBox(
-              controller: _searchController,
-              searching: _searching,
-              onChanged: _onSearchChanged,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      colors.background.withValues(alpha: 0.74),
+                      Colors.transparent,
+                      colors.background.withValues(alpha: 0.78),
+                    ],
+                    stops: const [0, 0.32, 1],
+                  ),
+                ),
+              ),
             ),
           ),
-          if (_results.isNotEmpty)
+          if (widget.showSearch)
+            Positioned(
+              left: 12,
+              right: 12,
+              top: 12,
+              child: _SearchBox(
+                controller: _searchController,
+                searching: _searching,
+                onChanged: _onSearchChanged,
+              ),
+            ),
+          if (widget.showSearch && _results.isNotEmpty)
             Positioned(
               left: 12,
               right: 12,
@@ -225,10 +284,26 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
   ) {
     return ColorFiltered(
       colorFilter: const ColorFilter.matrix([
-        -0.85, 0.00, 0.00, 0.0, 255.0,
-        0.00, -0.85, 0.00, 0.0, 255.0,
-        0.00, 0.00, -0.85, 0.0, 255.0,
-        0.00, 0.00, 0.00, 1.0, 0.0,
+        -0.55,
+        0,
+        0,
+        0,
+        150,
+        0,
+        -0.55,
+        0,
+        0,
+        150,
+        0,
+        0,
+        -0.55,
+        0,
+        150,
+        0,
+        0,
+        0,
+        1,
+        0,
       ]),
       child: ColorFiltered(
         colorFilter: const ColorFilter.matrix([
@@ -337,48 +412,49 @@ class _SearchBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 2, 10, 2),
-      decoration: BoxDecoration(
-        color: colors.surface2.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.outline),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.search_rounded,
-            color: colors.secondaryText,
-            size: 19,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.68),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: colors.outline),
           ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              onChanged: onChanged,
-              style: SpaceTypography.bodyMedium(
-                color: colors.primaryText,
-                fontWeight: FontWeight.w600,
+          child: Row(
+            children: [
+              Icon(Icons.search_rounded, color: colors.accent, size: 19),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  onChanged: onChanged,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: colors.primaryText,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search address or paste coordinates',
+                    hintStyle: TextStyle(color: colors.disabled),
+                    border: InputBorder.none,
+                  ),
+                ),
               ),
-              decoration: InputDecoration(
-                hintText: 'Search address or coordinates',
-                hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              ),
-            ),
+              if (searching)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.accent,
+                  ),
+                ),
+            ],
           ),
-          if (searching)
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: colors.accent,
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -394,54 +470,51 @@ class _SearchResults extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
 
-    return Container(
-      constraints: const BoxConstraints(maxHeight: 180),
-      decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: 0.98),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.outline),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          constraints: const BoxConstraints(maxHeight: 180),
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colors.outline),
           ),
-        ],
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        itemCount: results.length,
-        separatorBuilder: (_, _) =>
-            Divider(color: colors.outlineSubtle, height: 1),
-        itemBuilder: (context, index) {
-          final result = results[index];
-          return ListTile(
-            dense: true,
-            leading: Icon(
-              Icons.place_outlined,
-              color: colors.accent,
-              size: 19,
-            ),
-            title: Text(
-              result.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: SpaceTypography.bodyMedium(
-                color: colors.primaryText,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: Text(
-              '${result.point.latitude.toStringAsFixed(5)}, ${result.point.longitude.toStringAsFixed(5)}',
-              style: SpaceTypography.technical(
-                color: colors.disabled,
-                fontSize: 10,
-              ),
-            ),
-            onTap: () => onSelected(result),
-          );
-        },
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            itemCount: results.length,
+            separatorBuilder: (_, _) =>
+                Divider(color: colors.outlineSubtle, height: 1),
+            itemBuilder: (context, index) {
+              final result = results[index];
+              return ListTile(
+                dense: true,
+                leading: Icon(
+                  Icons.place_outlined,
+                  color: colors.accent,
+                  size: 19,
+                ),
+                title: Text(
+                  result.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: colors.primaryText,
+                  ),
+                ),
+                subtitle: Text(
+                  '${result.point.latitude.toStringAsFixed(5)}, ${result.point.longitude.toStringAsFixed(5)}',
+                  style: TextStyle(color: colors.disabled, fontSize: 11),
+                ),
+                onTap: () => onSelected(result),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -465,38 +538,41 @@ class _MapStatus extends StatelessWidget {
     final colors = SpaceColors.of(context);
     final text =
         status ??
-        '${point.latitude.toStringAsFixed(4)}° N, ${point.longitude.toStringAsFixed(4)}° E • ${radiusMeters}m';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: colors.surface2.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.outline),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: validation.canParticipate ? colors.tertiary : colors.warning,
-              shape: BoxShape.circle,
-            ),
+        '${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)} • ${radiusMeters}m';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.70),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: colors.outline),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: SpaceTypography.technical(
-                color: colors.secondaryText,
-                fontSize: 11,
+          child: Row(
+            children: [
+              Icon(
+                validation.canParticipate
+                    ? Icons.verified_rounded
+                    : Icons.info_outline_rounded,
+                color: validation.canParticipate
+                    ? colors.accent
+                    : colors.warning,
+                size: 16,
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: colors.secondaryText, fontSize: 12),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -520,11 +596,11 @@ class _MapIconButton extends StatelessWidget {
     return IconButton(
       onPressed: loading ? null : onTap,
       style: IconButton.styleFrom(
-        backgroundColor: colors.surface2.withValues(alpha: 0.94),
-        foregroundColor: colors.primaryText,
+        backgroundColor: colors.surface.withValues(alpha: 0.72),
+        foregroundColor: colors.accent,
         disabledForegroundColor: colors.disabled,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(999),
           side: BorderSide(color: colors.outline),
         ),
       ),
