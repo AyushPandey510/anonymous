@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 
-const spaceAccent = Color(0xFF37D399);
+const spacePrimary = Color(0xFF3B82F6);
+const spaceSecondary = Color(0xFF8B5CF6);
+const spaceTertiary = Color(0xFF10B981);
+const spaceAccent = spacePrimary;
 
 class SpaceColors extends ThemeExtension<SpaceColors> {
   const SpaceColors({
     required this.background,
     required this.surface,
+    required this.surface2,
+    required this.surface3,
     required this.card,
     required this.primaryText,
     required this.secondaryText,
     required this.disabled,
     required this.accent,
+    required this.secondaryAccent,
+    required this.tertiary,
     required this.onAccent,
     required this.danger,
     required this.warning,
@@ -25,11 +32,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
 
   final Color background;
   final Color surface;
+  final Color surface2;
+  final Color surface3;
   final Color card;
   final Color primaryText;
   final Color secondaryText;
   final Color disabled;
   final Color accent;
+  final Color secondaryAccent;
+  final Color tertiary;
   final Color onAccent;
   final Color danger;
   final Color warning;
@@ -42,43 +53,51 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
   final Color chipBackground;
 
   static const dark = SpaceColors(
-    background: Color(0xFF0A0B0E),
-    surface: Color(0xFF141519),
-    card: Color(0xFF1D1E24),
-    primaryText: Color(0xFFF9FAFB),
-    secondaryText: Color(0xFF9CA3AF),
+    background: Color(0xFF05070A),
+    surface: Color(0xFF0B0F14),
+    surface2: Color(0xFF10151C),
+    surface3: Color(0xFF151A21),
+    card: Color(0xFF0B0F14),
+    primaryText: Color(0xFFF8FAFC),
+    secondaryText: Color(0xFFA1AAB8),
     disabled: Color(0xFF6B7280),
-    accent: Color(0xFF009F78),
+    accent: Color(0xFF3B82F6),
+    secondaryAccent: Color(0xFF8B5CF6),
+    tertiary: Color(0xFF10B981),
     onAccent: Color(0xFFFFFFFF),
     danger: Color(0xFFEF4444),
     warning: Color(0xFFF59E0B),
     dangerStrong: Color(0xFFF87171),
-    outline: Color(0x1FFFFFFF),
-    outlineSubtle: Color(0x0FFFFFFF),
-    gradientTop: Color(0xFF0F1E1B),
-    gradientBottom: Color(0xFF0A0B0E),
-    navBackground: Color(0xFF111216),
-    chipBackground: Color(0xFF24262E),
+    outline: Color(0xFF151A21),
+    outlineSubtle: Color(0xFF10151C),
+    gradientTop: Color(0xFF08101A),
+    gradientBottom: Color(0xFF05070A),
+    navBackground: Color(0xFF0B0F14),
+    chipBackground: Color(0xFF10151C),
   );
 
   static const light = SpaceColors(
-    background: Color(0xFFF7F9F8),
+    background: Color(0xFFF8FAFC),
     surface: Color(0xFFFFFFFF),
+    surface2: Color(0xFFF1F5F9),
+    surface3: Color(0xFFE2E8F0),
     card: Color(0xFFFFFFFF),
-    primaryText: Color(0xFF17211F),
-    secondaryText: Color(0xFF6B7774),
-    disabled: Color(0xFFAAB4B1),
-    accent: Color(0xFF009F78),
+    primaryText: Color(0xFF0F172A),
+    secondaryText: Color(0xFF475569),
+    disabled: Color(0xFF64748B),
+    accent: Color(0xFF3B82F6),
+    secondaryAccent: Color(0xFF8B5CF6),
+    tertiary: Color(0xFF10B981),
     onAccent: Color(0xFFFFFFFF),
-    danger: Color(0xFFDC2626),
-    warning: Color(0xFFD97706),
-    dangerStrong: Color(0xFFB91C1C),
-    outline: Color(0xFFE6ECE9),
-    outlineSubtle: Color(0xFFF0F4F2),
-    gradientTop: Color(0xFFEFF5F2),
-    gradientBottom: Color(0xFFF7F9F8),
+    danger: Color(0xFFEF4444),
+    warning: Color(0xFFF59E0B),
+    dangerStrong: Color(0xFFDC2626),
+    outline: Color(0xFFE2E8F0),
+    outlineSubtle: Color(0xFFF1F5F9),
+    gradientTop: Color(0xFFF1F5F9),
+    gradientBottom: Color(0xFFF8FAFC),
     navBackground: Color(0xFFFFFFFF),
-    chipBackground: Color(0xFFF0F4F2),
+    chipBackground: Color(0xFFF1F5F9),
   );
 
   static SpaceColors of(BuildContext context) =>
@@ -88,11 +107,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
   SpaceColors copyWith({
     Color? background,
     Color? surface,
+    Color? surface2,
+    Color? surface3,
     Color? card,
     Color? primaryText,
     Color? secondaryText,
     Color? disabled,
     Color? accent,
+    Color? secondaryAccent,
+    Color? tertiary,
     Color? onAccent,
     Color? danger,
     Color? warning,
@@ -107,11 +130,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
     return SpaceColors(
       background: background ?? this.background,
       surface: surface ?? this.surface,
+      surface2: surface2 ?? this.surface2,
+      surface3: surface3 ?? this.surface3,
       card: card ?? this.card,
       primaryText: primaryText ?? this.primaryText,
       secondaryText: secondaryText ?? this.secondaryText,
       disabled: disabled ?? this.disabled,
       accent: accent ?? this.accent,
+      secondaryAccent: secondaryAccent ?? this.secondaryAccent,
+      tertiary: tertiary ?? this.tertiary,
       onAccent: onAccent ?? this.onAccent,
       danger: danger ?? this.danger,
       warning: warning ?? this.warning,
@@ -131,11 +158,15 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
     return SpaceColors(
       background: Color.lerp(background, other.background, t)!,
       surface: Color.lerp(surface, other.surface, t)!,
+      surface2: Color.lerp(surface2, other.surface2, t)!,
+      surface3: Color.lerp(surface3, other.surface3, t)!,
       card: Color.lerp(card, other.card, t)!,
       primaryText: Color.lerp(primaryText, other.primaryText, t)!,
       secondaryText: Color.lerp(secondaryText, other.secondaryText, t)!,
       disabled: Color.lerp(disabled, other.disabled, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
+      secondaryAccent: Color.lerp(secondaryAccent, other.secondaryAccent, t)!,
+      tertiary: Color.lerp(tertiary, other.tertiary, t)!,
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
       warning: Color.lerp(warning, other.warning, t)!,
@@ -150,6 +181,116 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
   }
 }
 
+class SpaceTypography {
+  static const fontHeading = 'Montserrat';
+  static const fontBody = 'Hanken Grotesk';
+  static const fontMono = 'JetBrains Mono';
+
+  static TextStyle headingLarge({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w700,
+    double fontSize = 26,
+    double? letterSpacing = -0.4,
+  }) =>
+      TextStyle(
+        fontFamily: fontHeading,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFF8FAFC),
+      );
+
+  static TextStyle headingMedium({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w700,
+    double fontSize = 18,
+    double? letterSpacing = -0.2,
+  }) =>
+      TextStyle(
+        fontFamily: fontHeading,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFF8FAFC),
+      );
+
+  static TextStyle headingSmall({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w600,
+    double fontSize = 15,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: fontHeading,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFF8FAFC),
+      );
+
+  static TextStyle bodyLarge({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w400,
+    double fontSize = 15,
+    double height = 1.4,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: fontBody,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFF8FAFC),
+      );
+
+  static TextStyle bodyMedium({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w400,
+    double fontSize = 13,
+    double height = 1.4,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: fontBody,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFA1AAB8),
+      );
+
+  static TextStyle bodySmall({
+    Color? color,
+    FontWeight fontWeight = FontWeight.w400,
+    double fontSize = 12,
+    double height = 1.3,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: fontBody,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        height: height,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFF6B7280),
+      );
+
+  static TextStyle technical({
+    Color? color,
+    double fontSize = 11,
+    FontWeight fontWeight = FontWeight.w600,
+    double letterSpacing = 0.4,
+  }) =>
+      TextStyle(
+        fontFamily: fontMono,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        color: color ?? const Color(0xFFA1AAB8),
+      );
+}
+
 ThemeData buildSpaceTheme(Brightness brightness) {
   final colors =
       brightness == Brightness.dark ? SpaceColors.dark : SpaceColors.light;
@@ -161,8 +302,9 @@ ThemeData buildSpaceTheme(Brightness brightness) {
   ).copyWith(
     surface: colors.surface,
     onSurface: colors.primaryText,
-    secondary: colors.accent,
+    secondary: colors.secondaryAccent,
     onSecondary: colors.onAccent,
+    tertiary: colors.tertiary,
     error: colors.danger,
     outline: colors.outline,
   );
@@ -170,15 +312,22 @@ ThemeData buildSpaceTheme(Brightness brightness) {
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
-    fontFamily: 'Inter',
+    fontFamily: SpaceTypography.fontBody,
     scaffoldBackgroundColor: colors.background,
     colorScheme: scheme,
     extensions: [colors],
-    textSelectionTheme: TextSelectionThemeData(cursorColor: colors.accent),
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: colors.accent,
+      selectionColor: colors.accent.withValues(alpha: 0.3),
+      selectionHandleColor: colors.accent,
+    ),
     dialogTheme: DialogThemeData(
       backgroundColor: colors.surface,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: colors.outline, width: 1),
+      ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: colors.surface,
@@ -188,23 +337,29 @@ ThemeData buildSpaceTheme(Brightness brightness) {
       ),
     ),
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: colors.card,
-      contentTextStyle: TextStyle(color: colors.primaryText),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: colors.surface2,
+      contentTextStyle: SpaceTypography.bodyMedium(color: colors.primaryText),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.outline, width: 1),
+      ),
       behavior: SnackBarBehavior.floating,
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: colors.navBackground,
-      indicatorColor: colors.accent.withValues(alpha: 0.18),
+      elevation: 0,
+      indicatorColor: colors.accent.withValues(alpha: 0.15),
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
           return TextStyle(
+            fontFamily: SpaceTypography.fontHeading,
             color: colors.accent,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           );
         }
         return TextStyle(
+          fontFamily: SpaceTypography.fontHeading,
           color: colors.disabled,
           fontSize: 12,
           fontWeight: FontWeight.w500,
@@ -213,4 +368,3 @@ ThemeData buildSpaceTheme(Brightness brightness) {
     ),
   );
 }
-

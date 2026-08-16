@@ -1,12 +1,17 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:space_mobile/config/app_config.dart';
 import 'package:space_mobile/features/location/domain/geofence.dart';
 import 'package:space_mobile/features/location/domain/geofence_validator.dart';
 import 'package:space_mobile/features/location/domain/geo_point.dart';
 import 'package:space_mobile/features/location/domain/location_fix.dart';
+import 'package:space_mobile/features/location/presentation/interactive_geofence_map.dart';
 import 'package:space_mobile/features/location/presentation/location_selection_screen.dart';
+import 'package:space_mobile/features/splash/animated_splash_screen.dart';
 import 'package:space_mobile/services/api_client.dart';
 import 'package:space_mobile/services/api_service.dart';
 import 'package:space_mobile/services/auth_service.dart';
@@ -17,10 +22,7 @@ void main() {
   runApp(const SpaceApp());
 }
 
-const apiBaseUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: 'http://localhost:8080',
-);
+String get defaultApiBaseUrl => AppConfig.apiBaseUrl;
 
 class SpaceApp extends StatefulWidget {
   const SpaceApp({super.key});
@@ -64,7 +66,8 @@ class AppLoader extends StatefulWidget {
 }
 
 class _AppLoaderState extends State<AppLoader> {
-  final _client = ApiClient(apiBaseUrl);
+  late final String _baseUrl;
+  late final ApiClient _client;
   late final AuthService _auth;
   late final ApiService _api;
   bool _ready = false;
@@ -73,24 +76,39 @@ class _AppLoaderState extends State<AppLoader> {
   @override
   void initState() {
     super.initState();
+    _baseUrl = defaultApiBaseUrl;
+    _client = ApiClient(_baseUrl);
     _auth = AuthService(_client);
     _api = ApiService(_client);
     _init();
   }
 
   Future<void> _init() async {
+    debugPrint('[Space App] 🚀 Initializing backend connection: $_baseUrl ...');
+    final stopwatch = Stopwatch()..start();
     try {
       await _auth.init();
       final loggedIn = await _auth.ensureLoggedIn();
       if (!mounted) return;
       if (loggedIn) {
+        debugPrint('[Space App] ✅ Session ready! Entering Space.');
+        final elapsed = stopwatch.elapsedMilliseconds;
+        if (elapsed < 2600) {
+          await Future.delayed(Duration(milliseconds: 2600 - elapsed));
+        }
+        if (!mounted) return;
         setState(() => _ready = true);
       } else {
-        setState(() => _error = 'Could not connect to server');
+        final reason = _auth.lastError ?? 'Connection refused';
+        debugPrint('[Space App] ❌ Authentication failed for $_baseUrl: $reason');
+        setState(() {
+          _error = 'Could not connect to server at $_baseUrl\n\n$reason';
+        });
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      debugPrint('[Space App] ❌ Connection error for $_baseUrl: $e');
+      setState(() => _error = 'Could not connect to server at $_baseUrl\n\n$e');
     }
   }
 
@@ -106,11 +124,29 @@ class _AppLoaderState extends State<AppLoader> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.cloud_off_rounded,
-                    size: 48, color: colors.disabled),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: colors.danger.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.cloud_off_rounded,
+                    size: 40,
+                    color: colors.dangerStrong,
+                  ),
+                ),
                 const SizedBox(height: 16),
-                Text(_error!,
-                    style: TextStyle(color: colors.secondaryText)),
+                Text(
+                  'Connection Error',
+                  style: SpaceTypography.headingMedium(color: colors.primaryText),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: SpaceTypography.bodyMedium(color: colors.secondaryText),
+                ),
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   onPressed: () {
@@ -122,6 +158,14 @@ class _AppLoaderState extends State<AppLoader> {
                   },
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Retry'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    foregroundColor: colors.onAccent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
                 ),
               ],
             ),
@@ -131,12 +175,7 @@ class _AppLoaderState extends State<AppLoader> {
     }
 
     if (!_ready) {
-      return Scaffold(
-        backgroundColor: colors.background,
-        body: Center(
-          child: CircularProgressIndicator(color: colors.accent),
-        ),
-      );
+      return const AnimatedSplashScreen();
     }
 
     return SpaceShell(
@@ -242,17 +281,15 @@ class _SpaceShellState extends State<SpaceShell> {
         backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: colors.outline),
         ),
         title: Text(
           'Left Space Area',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: colors.primaryText,
-          ),
+          style: SpaceTypography.headingMedium(color: colors.primaryText),
         ),
         content: Text(
           'You have moved outside the Space geofence. You will be removed from this Space.',
-          style: TextStyle(color: colors.secondaryText),
+          style: SpaceTypography.bodyMedium(color: colors.secondaryText),
         ),
         actions: [
           FilledButton(
@@ -285,6 +322,8 @@ class _SpaceShellState extends State<SpaceShell> {
     return switch (_screen) {
       AppScreen.location => LocationSelectionScreen(
           onLocationSelected: _onLocationSelected,
+          onToggleTheme: widget.onToggleTheme,
+          isDark: widget.isDark,
         ),
       AppScreen.discovery || AppScreen.mySpaces => _buildHomeTabs(),
       AppScreen.chat => ChatScreen(
@@ -326,7 +365,8 @@ class _SpaceShellState extends State<SpaceShell> {
             ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: colors.outline)),
+          color: colors.navBackground,
+          border: Border(top: BorderSide(color: colors.outline, width: 1)),
         ),
         child: NavigationBar(
           selectedIndex: selectedIndex,
@@ -336,18 +376,19 @@ class _SpaceShellState extends State<SpaceShell> {
             });
           },
           backgroundColor: colors.navBackground,
-          indicatorColor: colors.accent.withValues(alpha: 0.12),
-          height: 66,
+          indicatorColor: colors.accent.withValues(alpha: 0.16),
+          height: 64,
+          elevation: 0,
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: [
             NavigationDestination(
-              icon: Icon(Icons.radar_outlined, color: colors.secondaryText, size: 22),
-              selectedIcon: Icon(Icons.radar_rounded, color: colors.accent, size: 22),
-              label: 'Discover',
+              icon: Icon(Icons.radar_outlined, color: colors.disabled, size: 21),
+              selectedIcon: Icon(Icons.radar_rounded, color: colors.secondaryAccent, size: 21),
+              label: 'Discovery',
             ),
             NavigationDestination(
-              icon: Icon(Icons.forum_outlined, color: colors.secondaryText, size: 22),
-              selectedIcon: Icon(Icons.forum_rounded, color: colors.accent, size: 22),
+              icon: Icon(Icons.forum_outlined, color: colors.disabled, size: 21),
+              selectedIcon: Icon(Icons.forum_rounded, color: colors.secondaryAccent, size: 21),
               label: 'My Spaces',
             ),
           ],
@@ -395,8 +436,8 @@ class _SpaceShellState extends State<SpaceShell> {
             : 'Could not join: ${e.toString()}';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(message, style: TextStyle(color: colors.primaryText)),
-            backgroundColor: colors.card,
+            content: Text(message, style: SpaceTypography.bodyMedium(color: colors.primaryText)),
+            backgroundColor: colors.surface2,
           ),
         );
       }
@@ -552,114 +593,375 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
         decoration: BoxDecoration(
           gradient: RadialGradient(
             center: Alignment.topRight,
-            radius: 1.2,
+            radius: 1.3,
             colors: [colors.gradientTop, colors.gradientBottom],
-            stops: const [0, 0.58],
+            stops: const [0, 0.65],
           ),
         ),
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 112),
+          child: Column(
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.arrow_back_rounded, color: colors.primaryText),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Create Space',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: colors.primaryText,
-                      ),
-                    ),
-                  ),
-                  if (widget.onToggleTheme != null)
-                    IconButton(
-                      onPressed: widget.onToggleTheme,
-                      icon: Icon(
-                        widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                        color: colors.primaryText,
-                      ),
-                      tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Set up a new Space for your area.',
-                style: TextStyle(
-                  color: colors.secondaryText,
-                  fontSize: 15,
+              // Top Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  border: Border(bottom: BorderSide(color: colors.outline, width: 1)),
                 ),
-              ),
-              const SizedBox(height: 24),
-              StepCard(
-                step: 'Step 1',
-                title: 'Name',
-                child: SpaceTextField(controller: _nameController),
-              ),
-              const SizedBox(height: 14),
-              StepCard(
-                step: 'Step 2',
-                title: 'Visibility',
                 child: Row(
                   children: [
-                    Expanded(
-                      child: ChoicePill(
-                        label: 'Public',
-                        selected: !_isPrivate,
-                        onTap: () => setState(() => _isPrivate = false),
+                    InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: colors.surface2,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: colors.outline),
+                        ),
+                        child: Icon(Icons.close_rounded, color: colors.primaryText, size: 18),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 14),
                     Expanded(
-                      child: ChoicePill(
-                        label: 'Private',
-                        selected: _isPrivate,
-                        onTap: () => setState(() => _isPrivate = true),
+                      child: Text(
+                        'Create Space',
+                        style: SpaceTypography.headingSmall(
+                          color: colors.primaryText,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
+                    if (widget.onToggleTheme != null)
+                      IconButton(
+                        onPressed: widget.onToggleTheme,
+                        icon: Icon(
+                          widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                          color: colors.secondaryText,
+                          size: 20,
+                        ),
+                        tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
+                      ),
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
-              StepCard(
-                step: 'Step 3',
-                title: 'Geofence',
-                child: Column(
+
+              // Scrollable Form Content
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
                   children: [
-                    GeofenceDecisionPanel(validation: validation),
-                    const SizedBox(height: 12),
-                    Slider(
-                      value: _radius,
-                      min: CircleGeofence.minRadiusMeters.toDouble(),
-                      max: CircleGeofence.maxRadiusMeters.toDouble(),
-                      divisions: CircleGeofence.maxRadiusMeters -
-                          CircleGeofence.minRadiusMeters,
-                      activeColor: colors.accent,
-                      inactiveColor: colors.card,
-                      onChanged: (value) => setState(() => _radius = value),
-                    ),
+                    // 1. Identity Heading
                     Text(
-                      '${_radius.round()}m radius',
-                      style: TextStyle(
-                        color: colors.secondaryText,
-                        fontSize: 13,
+                      '1. Identity',
+                      style: SpaceTypography.headingSmall(
+                        color: colors.primaryText,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Identity Card
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: colors.outline),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SPACE NAME',
+                            style: SpaceTypography.technical(
+                              color: colors.secondaryText,
+                              fontSize: 11,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: colors.surface2,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: colors.outline),
+                            ),
+                            child: TextField(
+                              controller: _nameController,
+                              style: SpaceTypography.bodyLarge(
+                                color: colors.primaryText,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                prefixIcon: Icon(Icons.tag_rounded, color: colors.disabled, size: 20),
+                                hintText: 'e.g. Neon District Lounge',
+                                hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            'VISIBILITY',
+                            style: SpaceTypography.technical(
+                              color: colors.secondaryText,
+                              fontSize: 11,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _VisibilityOptionPill(
+                                  label: 'Public',
+                                  icon: Icons.public_rounded,
+                                  selected: !_isPrivate,
+                                  onTap: () => setState(() => _isPrivate = false),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _VisibilityOptionPill(
+                                  label: 'Invite Only',
+                                  icon: Icons.lock_outline_rounded,
+                                  selected: _isPrivate,
+                                  onTap: () => setState(() => _isPrivate = true),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+
+                    // 2. Geofence Heading & Status Badge
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '2. Geofence',
+                          style: SpaceTypography.headingSmall(
+                            color: colors.primaryText,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (validation.canParticipate ? colors.tertiary : colors.warning)
+                                .withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: (validation.canParticipate ? colors.tertiary : colors.warning)
+                                  .withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: validation.canParticipate ? colors.tertiary : colors.warning,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (validation.canParticipate ? colors.tertiary : colors.warning)
+                                          .withValues(alpha: 0.6),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                validation.canParticipate ? 'Inside bounds' : 'Check bounds',
+                                style: SpaceTypography.technical(
+                                  color: validation.canParticipate ? colors.tertiary : colors.warning,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Geofence Card with Map and Slider
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: colors.outline),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Interactive Map
+                          Container(
+                            height: 220,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: colors.outline),
+                            ),
+                            child: InteractiveGeofenceMap(
+                              point: _selectedPoint,
+                              radiusMeters: _radius.round(),
+                              validation: validation,
+                              onPointChanged: (point) {
+                                setState(() {
+                                  _selectedPoint = point;
+                                });
+                              },
+                              onAccuracyChanged: (_) {},
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Radius Section
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'RADIUS',
+                                style: SpaceTypography.technical(
+                                  color: colors.secondaryText,
+                                  fontSize: 11,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: colors.accent.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: colors.accent.withValues(alpha: 0.3)),
+                                ),
+                                child: Text(
+                                  '${_radius.round()}m',
+                                  style: SpaceTypography.technical(
+                                    color: colors.accent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Text(
+                                '${CircleGeofence.minRadiusMeters}m',
+                                style: SpaceTypography.technical(color: colors.disabled, fontSize: 11),
+                              ),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 3,
+                                    activeTrackColor: colors.accent,
+                                    inactiveTrackColor: const Color(0xFF252B33),
+                                    thumbColor: const Color(0xFFAFC5FF),
+                                    overlayColor: colors.accent.withValues(alpha: 0.15),
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                                  ),
+                                  child: Slider(
+                                    value: _radius,
+                                    min: CircleGeofence.minRadiusMeters.toDouble(),
+                                    max: CircleGeofence.maxRadiusMeters.toDouble(),
+                                    divisions: CircleGeofence.maxRadiusMeters - CircleGeofence.minRadiusMeters,
+                                    onChanged: (value) => setState(() => _radius = value),
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${CircleGeofence.maxRadiusMeters}m',
+                                style: SpaceTypography.technical(color: colors.disabled, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Initialize Space Button
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        gradient: LinearGradient(
+                          colors: [colors.accent, colors.secondaryAccent],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.accent.withValues(alpha: 0.35),
+                            blurRadius: 18,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: FilledButton(
+                        onPressed: _creating ? null : _createSpace,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(54),
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        ),
+                        child: _creating
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colors.onAccent,
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Initialize Space',
+                                    style: SpaceTypography.headingSmall(
+                                      color: colors.onAccent,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text('🚀', style: TextStyle(fontSize: 16)),
+                                ],
+                              ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-              SpaceButton(
-                label: _creating ? 'Creating...' : 'Create Space',
-                icon: Icons.check_rounded,
-                loading: _creating,
-                onPressed: _creating ? null : _createSpace,
               ),
             ],
           ),
@@ -698,13 +1000,67 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
       final colors = SpaceColors.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to create: ${e.toString()}', style: TextStyle(color: colors.primaryText)),
-          backgroundColor: colors.card,
+          content: Text('Failed to create: ${e.toString()}', style: SpaceTypography.bodyMedium(color: colors.primaryText)),
+          backgroundColor: colors.surface2,
         ),
       );
     } finally {
       if (mounted) setState(() => _creating = false);
     }
+  }
+}
+
+class _VisibilityOptionPill extends StatelessWidget {
+  const _VisibilityOptionPill({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? colors.accent.withValues(alpha: 0.12) : colors.surface2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? colors.accent : colors.outline,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? colors.accent : colors.disabled,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: SpaceTypography.bodyMedium(
+                color: selected ? colors.primaryText : colors.secondaryText,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -876,18 +1232,23 @@ class ChatScreenState extends State<ChatScreen> {
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  message.text,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.secondaryText,
-                    fontSize: 13,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colors.surface2,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: colors.outline),
+                  ),
+                  child: Text(
+                    message.text,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: SpaceTypography.bodyMedium(color: colors.primaryText),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -907,9 +1268,15 @@ class ChatScreenState extends State<ChatScreen> {
                 const SizedBox(height: 14),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.reply_rounded,
-                      color: colors.secondaryText),
-                  title: Text('Reply', style: TextStyle(color: colors.primaryText)),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: colors.surface2,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.reply_rounded, color: colors.accent, size: 18),
+                  ),
+                  title: Text('Reply', style: SpaceTypography.bodyLarge(color: colors.primaryText, fontWeight: FontWeight.w600)),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     _startReply(message);
@@ -918,10 +1285,15 @@ class ChatScreenState extends State<ChatScreen> {
                 if (message.name == widget.anonymousName)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.delete_outline_rounded,
-                        color: colors.danger),
-                    title: Text('Delete',
-                        style: TextStyle(color: colors.danger)),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colors.danger.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.delete_outline_rounded, color: colors.danger, size: 18),
+                    ),
+                    title: Text('Delete', style: SpaceTypography.bodyLarge(color: colors.danger, fontWeight: FontWeight.w600)),
                     onTap: () {
                       Navigator.of(sheetContext).pop();
                       _confirmDelete(message);
@@ -929,9 +1301,15 @@ class ChatScreenState extends State<ChatScreen> {
                   ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.flag_outlined,
-                      color: colors.secondaryText),
-                  title: Text('Report', style: TextStyle(color: colors.primaryText)),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: colors.surface2,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.flag_outlined, color: colors.secondaryText, size: 18),
+                  ),
+                  title: Text('Report', style: SpaceTypography.bodyLarge(color: colors.primaryText, fontWeight: FontWeight.w600)),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
                     _showReportOptions(message);
@@ -953,17 +1331,20 @@ class ChatScreenState extends State<ChatScreen> {
         backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: colors.outline),
         ),
-        title: Text('Delete message?',
-            style: TextStyle(fontWeight: FontWeight.w700, color: colors.primaryText)),
+        title: Text(
+          'Delete message?',
+          style: SpaceTypography.headingMedium(color: colors.primaryText),
+        ),
         content: Text(
           'This removes the message for everyone. Available within 15 minutes of sending.',
-          style: TextStyle(color: colors.secondaryText),
+          style: SpaceTypography.bodyMedium(color: colors.secondaryText),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text('Cancel', style: TextStyle(color: colors.secondaryText)),
+            child: Text('Cancel', style: SpaceTypography.bodyMedium(color: colors.secondaryText)),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -990,8 +1371,8 @@ class ChatScreenState extends State<ChatScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Message deleted', style: TextStyle(color: colors.primaryText)),
-          backgroundColor: colors.card,
+          content: Text('Message deleted', style: SpaceTypography.bodyMedium(color: colors.primaryText)),
+          backgroundColor: colors.surface2,
         ),
       );
     } on ApiException catch (e) {
@@ -1001,8 +1382,8 @@ class ChatScreenState extends State<ChatScreen> {
           : 'Could not delete message';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(messageText, style: TextStyle(color: colors.primaryText)),
-          backgroundColor: colors.card,
+          content: Text(messageText, style: SpaceTypography.bodyMedium(color: colors.primaryText)),
+          backgroundColor: colors.surface2,
         ),
       );
     }
@@ -1016,9 +1397,12 @@ class ChatScreenState extends State<ChatScreen> {
         backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: colors.outline),
         ),
-        title: Text('Report message',
-            style: TextStyle(fontWeight: FontWeight.w700, color: colors.primaryText)),
+        title: Text(
+          'Report message',
+          style: SpaceTypography.headingMedium(color: colors.primaryText),
+        ),
         children: [
           for (final reason in _reportReasons)
             SimpleDialogOption(
@@ -1026,7 +1410,10 @@ class ChatScreenState extends State<ChatScreen> {
                 Navigator.of(dialogContext).pop();
                 _sendReport(message, reason);
               },
-              child: Text(reason, style: TextStyle(color: colors.primaryText)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(reason, style: SpaceTypography.bodyLarge(color: colors.primaryText)),
+              ),
             ),
         ],
       ),
@@ -1040,16 +1427,16 @@ class ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Thanks, report submitted', style: TextStyle(color: colors.primaryText)),
-          backgroundColor: colors.card,
+          content: Text('Thanks, report submitted', style: SpaceTypography.bodyMedium(color: colors.primaryText)),
+          backgroundColor: colors.surface2,
         ),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not submit report', style: TextStyle(color: colors.primaryText)),
-          backgroundColor: colors.card,
+          content: Text('Could not submit report', style: SpaceTypography.bodyMedium(color: colors.primaryText)),
+          backgroundColor: colors.surface2,
         ),
       );
     }
@@ -1069,57 +1456,105 @@ class ChatScreenState extends State<ChatScreen> {
       child: SpaceScaffold(
         child: Column(
           children: [
+            // Top Header: Globe (Left) • Space Name & Alias (Center) • Actions (Right)
             SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: colors.surface.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(24),
+                    color: colors.surface.withValues(alpha: 0.94),
+                    borderRadius: BorderRadius.circular(22),
                     border: Border.all(color: colors.outline),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: widget.isDark ? 0.35 : 0.06),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
                       if (widget.onBack != null)
-                        IconButton(
-                          onPressed: widget.onBack,
-                          icon: Icon(
-                            Icons.arrow_back_rounded,
-                            color: colors.primaryText,
+                        InkWell(
+                          onTap: widget.onBack,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: colors.surface2,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: colors.outline),
+                            ),
+                            child: Icon(
+                              Icons.arrow_back_rounded,
+                              color: colors.primaryText,
+                              size: 18,
+                            ),
                           ),
-                          tooltip: 'Back to Dashboard',
+                        )
+                      else
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: widget.isDark ? const Color(0xFF1A2029) : colors.surface2,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: colors.outline),
+                          ),
+                          child: Icon(
+                            Icons.public_rounded,
+                            color: widget.isDark ? const Color(0xFFAFC5FF) : colors.accent,
+                            size: 19,
+                          ),
                         ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              widget.space.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                                color: colors.primaryText,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
                             Row(
                               children: [
-                                Icon(Icons.person_outline_rounded,
-                                    size: 14, color: colors.secondaryText),
-                                const SizedBox(width: 6),
-                                Text(
-                                  widget.anonymousName,
-                                  style: TextStyle(
-                                    color: colors.secondaryText,
-                                    fontSize: 12,
+                                Flexible(
+                                  child: Text(
+                                    widget.space.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: SpaceTypography.headingSmall(
+                                      color: colors.primaryText,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: colors.tertiary,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: colors.tertiary.withValues(alpha: 0.6),
+                                        blurRadius: 4,
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Alias: ${widget.anonymousName}',
+                              style: SpaceTypography.technical(
+                                color: colors.tertiary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
@@ -1130,6 +1565,7 @@ class ChatScreenState extends State<ChatScreen> {
                           icon: Icon(
                             widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
                             color: colors.secondaryText,
+                            size: 20,
                           ),
                           tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
                         ),
@@ -1138,6 +1574,7 @@ class ChatScreenState extends State<ChatScreen> {
                         icon: Icon(
                           Icons.exit_to_app_rounded,
                           color: colors.danger,
+                          size: 20,
                         ),
                         tooltip: 'Leave Space',
                       ),
@@ -1146,61 +1583,92 @@ class ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ),
-          Expanded(
-            child: _loadingMessages
-                ? Center(child: CircularProgressIndicator(color: colors.accent))
-                : _messages.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.forum_outlined,
-                              size: 48,
-                              color: colors.disabled,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No messages yet',
-                              style: TextStyle(
-                                color: colors.secondaryText,
-                                fontSize: 16,
+
+            // Message Timeline
+            Expanded(
+              child: _loadingMessages
+                  ? Center(child: CircularProgressIndicator(color: colors.accent))
+                  : _messages.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 64,
+                                height: 64,
+                                decoration: BoxDecoration(
+                                  color: colors.surface2,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: colors.outline),
+                                ),
+                                child: Icon(
+                                  Icons.forum_outlined,
+                                  size: 28,
+                                  color: colors.secondaryAccent,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Start the conversation',
-                              style: TextStyle(
-                                color: colors.disabled,
-                                fontSize: 13,
+                              const SizedBox(height: 16),
+                              Text(
+                                'No messages yet',
+                                style: SpaceTypography.headingSmall(color: colors.primaryText),
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 4),
+                              Text(
+                                'Start the conversation in this Space',
+                                style: SpaceTypography.bodySmall(color: colors.secondaryText),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          itemCount: _messages.length + 1,
+                          itemBuilder: (context, index) {
+                            if (index == 0) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                child: Center(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: colors.surface2,
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(color: colors.outline),
+                                    ),
+                                    child: Text(
+                                      'Today, ${TimeOfDay.now().format(context)}',
+                                      style: SpaceTypography.technical(
+                                        color: colors.secondaryText,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            final message = _messages[index - 1];
+                            final isMe = message.name == widget.anonymousName;
+                            return MessageCard(
+                              message: message,
+                              isMe: isMe,
+                              onLongPress: () => _showMessageActions(message),
+                            );
+                          },
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final message = _messages[index];
-                          return MessageCard(
-                            message: message,
-                            onLongPress: () => _showMessageActions(message),
-                          );
-                        },
-                      ),
-          ),
-          ChatComposer(
-            controller: _controller,
-            onSend: _sendMessage,
-            replyingTo: _replyingTo,
-            onCancelReply: () => setState(() => _replyingTo = null),
-          ),
-        ],
+            ),
+            ChatComposer(
+              controller: _controller,
+              spaceName: widget.space.name,
+              onSend: _sendMessage,
+              replyingTo: _replyingTo,
+              onCancelReply: () => setState(() => _replyingTo = null),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 // API-backed discovery screen
@@ -1289,88 +1757,224 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour >= 5 && hour < 12) {
-      return 'Good morning';
+      return 'Good Morning,';
     } else if (hour >= 12 && hour < 17) {
-      return 'Good afternoon';
+      return 'Good Afternoon,';
     } else if (hour >= 17 && hour < 21) {
-      return 'Good evening';
+      return 'Good Evening,';
     } else {
-      return 'Good night';
+      return 'Good Night,';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SpaceScaffold(
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Top Header Bar: Globe (Left) • Space (Center) • Actions (Right)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _greeting,
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.5,
-                            color: colors.primaryText,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.place_rounded,
-                              size: 14,
-                              color: colors.accent,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(4)} • Nearby',
-                              style: TextStyle(
-                                color: colors.secondaryText,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                  InkWell(
+                    onTap: widget.onChangeLocation,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: colors.surface2,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: colors.outline),
+                      ),
+                      child: Icon(
+                        Icons.public_rounded,
+                        color: isDark ? const Color(0xFFAFC5FF) : colors.accent,
+                        size: 21,
+                      ),
                     ),
                   ),
-                  if (widget.onToggleTheme != null)
-                    IconButton(
-                      onPressed: widget.onToggleTheme,
-                      icon: Icon(
-                        widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                        color: colors.secondaryText,
-                        size: 22,
+                  Expanded(
+                    child: Text(
+                      'Space',
+                      textAlign: TextAlign.center,
+                      style: SpaceTypography.headingLarge(
+                        color: colors.primaryText,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 24,
                       ),
-                      tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
                     ),
-                  IconButton(
-                    onPressed: widget.onChangeLocation,
-                    icon: Icon(Icons.edit_location_alt_rounded,
-                        color: colors.secondaryText,
-                        size: 22),
-                    tooltip: 'Change location',
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.onToggleTheme != null)
+                        InkWell(
+                          onTap: widget.onToggleTheme,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: colors.surface2,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: colors.outline),
+                            ),
+                            child: Icon(
+                              widget.isDark
+                                  ? Icons.light_mode_rounded
+                                  : Icons.dark_mode_rounded,
+                              color: colors.secondaryText,
+                              size: 19,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: _discover,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: colors.surface2,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: colors.outline),
+                          ),
+                          child: Icon(
+                            Icons.refresh_rounded,
+                            color: colors.secondaryText,
+                            size: 19,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
+
+            // Greeting & Technical Location Badge
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _greeting,
+                    style: SpaceTypography.headingMedium(
+                      color: colors.primaryText,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 24,
+                    ),
+                  ),
+                  Text(
+                    'Explorer.',
+                    style: SpaceTypography.headingLarge(
+                      color: isDark ? const Color(0xFFAFC5FF) : colors.accent,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Location Badge
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: colors.surface2,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: colors.outline),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: colors.accent,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: colors.accent.withValues(alpha: 0.6),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'SECTOR 76 • ${widget.latitude.toStringAsFixed(4)}° N, ${widget.longitude.toStringAsFixed(4)}° W',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: SpaceTypography.technical(
+                              color: colors.secondaryText,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Section Title: Nearby Spaces
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+              child: Row(
+                children: [
+                  Text(
+                    'Nearby Spaces',
+                    style: SpaceTypography.headingSmall(
+                      color: colors.primaryText,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (!_loading && _spaces.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: colors.accent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${_spaces.length} ACTIVE',
+                        style: SpaceTypography.technical(
+                          color: colors.accent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  const Spacer(),
+                  Icon(
+                    Icons.radar_rounded,
+                    size: 18,
+                    color: colors.secondaryText,
+                  ),
+                ],
+              ),
+            ),
+
+            // Spaces List / Loading / Error / Empty States
             if (_loading)
               Expanded(
-                child: Center(child: CircularProgressIndicator(color: colors.accent)),
+                child: Center(
+                    child: CircularProgressIndicator(color: colors.accent)),
               )
             else if (_error != null)
               Expanded(
@@ -1382,23 +1986,21 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.error_outline_rounded,
-                            size: 48, color: colors.danger),
-                        const SizedBox(height: 16),
+                            size: 44, color: colors.danger),
+                        const SizedBox(height: 14),
                         Text(
                           'Unable to load nearby spaces',
-                          style: TextStyle(
-                            color: colors.primaryText,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: SpaceTypography.headingSmall(
+                              color: colors.primaryText),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           'Please check your connection and try again.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: colors.secondaryText, fontSize: 14),
+                          style: SpaceTypography.bodyMedium(
+                              color: colors.secondaryText),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 18),
                         FilledButton.icon(
                           onPressed: _discover,
                           icon: const Icon(Icons.refresh_rounded, size: 18),
@@ -1407,7 +2009,8 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                             backgroundColor: colors.accent,
                             foregroundColor: colors.onAccent,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
                           ),
                         ),
                       ],
@@ -1429,49 +2032,50 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Container(
-                                  width: 80,
-                                  height: 80,
+                                  width: 72,
+                                  height: 72,
                                   decoration: BoxDecoration(
-                                    color: colors.card,
+                                    color: colors.surface2,
                                     shape: BoxShape.circle,
                                     border: Border.all(color: colors.outline),
                                   ),
                                   child: Icon(
                                     Icons.near_me_outlined,
-                                    size: 38,
+                                    size: 32,
                                     color: colors.disabled,
                                   ),
                                 ),
-                                const SizedBox(height: 20),
+                                const SizedBox(height: 18),
                                 Text(
                                   'No spaces nearby',
-                                  style: TextStyle(
+                                  style: SpaceTypography.headingSmall(
                                     color: colors.primaryText,
-                                    fontSize: 18,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
                                 const SizedBox(height: 6),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  child: Text(
-                                    "We couldn't find spaces around your current location.",
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: colors.secondaryText,
-                                      fontSize: 14,
-                                    ),
-                                  ),
+                                Text(
+                                  "We couldn't find spaces around your current location.",
+                                  textAlign: TextAlign.center,
+                                  style: SpaceTypography.bodyMedium(
+                                      color: colors.secondaryText),
                                 ),
-                                const SizedBox(height: 20),
+                                const SizedBox(height: 18),
                                 OutlinedButton.icon(
                                   onPressed: widget.onChangeLocation,
-                                  icon: Icon(Icons.edit_location_alt_rounded, size: 16, color: colors.secondaryText),
-                                  label: Text('Change Location', style: TextStyle(color: colors.primaryText, fontSize: 14, fontWeight: FontWeight.w600)),
+                                  icon: Icon(Icons.edit_location_alt_rounded,
+                                      size: 16, color: colors.secondaryText),
+                                  label: Text('Change Location',
+                                      style: SpaceTypography.bodyMedium(
+                                          color: colors.primaryText,
+                                          fontWeight: FontWeight.w600)),
                                   style: OutlinedButton.styleFrom(
                                     side: BorderSide(color: colors.outline),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(14)),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 18, vertical: 12),
                                   ),
                                 ),
                               ],
@@ -1496,39 +2100,25 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                 child: Stack(
                   children: [
                     ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 96),
                       itemCount: _spaces.length,
                       itemBuilder: (context, index) {
                         final space = _spaces[index];
-                        return TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: Duration(milliseconds: 200 + (index * 40).clamp(0, 300)),
-                          builder: (context, value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Transform.translate(
-                                offset: Offset(0, (1 - value) * 12),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: _SpaceCard(
-                            name: space.name,
-                            distance: space.distanceMeters,
-                            memberCount: space.memberCount,
-                            joined: space.joined,
-                            loading: _joiningId == space.id,
-                            onTap: _joiningId == null
-                                ? () => _join(space)
-                                : null,
-                          ),
+                        return _SpaceCard(
+                          name: space.name,
+                          description: space.description,
+                          distance: space.distanceMeters,
+                          memberCount: space.memberCount,
+                          joined: space.joined,
+                          loading: _joiningId == space.id,
+                          onTap: _joiningId == null ? () => _join(space) : null,
                         );
                       },
                     ),
                     Positioned(
                       left: 20,
                       right: 20,
-                      bottom: 20,
+                      bottom: 18,
                       child: _SpaceButton(
                         label: 'Create a Space',
                         icon: Icons.add_rounded,
@@ -1634,19 +2224,14 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                       children: [
                         Text(
                           'My Spaces',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: colors.primaryText,
-                          ),
+                          style: SpaceTypography.headingLarge(
+                              color: colors.primaryText),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           'Spaces you are in',
-                          style: TextStyle(
-                            color: colors.secondaryText,
-                            fontSize: 15,
-                          ),
+                          style: SpaceTypography.bodyMedium(
+                              color: colors.secondaryText),
                         ),
                       ],
                     ),
@@ -1655,15 +2240,21 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                     IconButton(
                       onPressed: widget.onToggleTheme,
                       icon: Icon(
-                        widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                        widget.isDark
+                            ? Icons.light_mode_rounded
+                            : Icons.dark_mode_rounded,
                         color: colors.secondaryText,
+                        size: 20,
                       ),
                       tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
                     ),
                   IconButton(
                     onPressed: _load,
-                    icon: Icon(Icons.refresh_rounded,
-                        color: colors.secondaryText),
+                    icon: Icon(
+                      Icons.refresh_rounded,
+                      color: colors.secondaryText,
+                      size: 20,
+                    ),
                     tooltip: 'Refresh',
                   ),
                 ],
@@ -1671,7 +2262,8 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
             ),
             if (_loading)
               Expanded(
-                child: Center(child: CircularProgressIndicator(color: colors.accent)),
+                child: Center(
+                    child: CircularProgressIndicator(color: colors.accent)),
               )
             else if (_error != null)
               Expanded(
@@ -1681,7 +2273,8 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(_error!,
-                            style: TextStyle(color: colors.secondaryText)),
+                            style: SpaceTypography.bodyMedium(
+                                color: colors.secondaryText)),
                         const SizedBox(height: 16),
                         FilledButton.icon(
                           onPressed: _load,
@@ -1700,23 +2293,28 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.forum_outlined,
-                            size: 48, color: colors.disabled),
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: colors.surface2,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: colors.outline),
+                          ),
+                          child: Icon(Icons.forum_outlined,
+                              size: 28, color: colors.disabled),
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           'You are not in any Spaces',
-                          style: TextStyle(
-                            color: colors.secondaryText,
-                            fontSize: 16,
-                          ),
+                          style: SpaceTypography.headingSmall(
+                              color: colors.primaryText),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           'Join one from the Discover tab',
-                          style: TextStyle(
-                            color: colors.disabled,
-                            fontSize: 13,
-                          ),
+                          style: SpaceTypography.bodyMedium(
+                              color: colors.disabled),
                         ),
                       ],
                     ),
@@ -1732,12 +2330,12 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                     final space = _spaces[index];
                     return _SpaceCard(
                       name: space.name,
+                      description: space.description,
+                      distance: space.distanceMeters,
                       memberCount: space.memberCount,
                       joined: true,
                       loading: _openingId == space.id,
-                      onTap: _openingId == null
-                          ? () => _open(space)
-                          : null,
+                      onTap: _openingId == null ? () => _open(space) : null,
                     );
                   },
                 ),
@@ -1766,26 +2364,30 @@ class _SpaceButton extends StatelessWidget {
     final colors = SpaceColors.of(context);
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(19),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: colors.accent.withValues(alpha: 0.18),
-            blurRadius: 14,
+            color: colors.accent.withValues(alpha: 0.28),
+            blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: FilledButton.icon(
         onPressed: onPressed,
-        icon: Icon(icon, size: 20),
+        icon: Icon(icon, size: 19),
         label: Text(label),
         style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(54),
+          minimumSize: const Size.fromHeight(52),
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: SpaceTypography.headingSmall(
+            color: colors.onAccent,
+            fontWeight: FontWeight.w700,
+          ),
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         ),
       ),
     );
@@ -1795,6 +2397,7 @@ class _SpaceButton extends StatelessWidget {
 class _SpaceCard extends StatelessWidget {
   const _SpaceCard({
     required this.name,
+    this.description,
     this.distance = 0,
     this.memberCount = 0,
     this.joined = false,
@@ -1803,6 +2406,7 @@ class _SpaceCard extends StatelessWidget {
   });
 
   final String name;
+  final String? description;
   final double distance;
   final int memberCount;
   final bool joined;
@@ -1815,131 +2419,220 @@ class _SpaceCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(16),
+        child: Container(
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: joined
-                ? colors.accent.withValues(alpha: 0.08)
-                : colors.card,
-            borderRadius: BorderRadius.circular(18),
+            color: colors.card,
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: joined
-                  ? colors.accent.withValues(alpha: 0.35)
+                  ? colors.tertiary.withValues(alpha: 0.35)
                   : colors.outline,
+              width: 1,
             ),
-            boxShadow: isDark
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: joined
-                      ? colors.accent.withValues(alpha: 0.16)
-                      : colors.chipBackground,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  joined ? Icons.forum_rounded : Icons.radar_rounded,
-                  color: joined ? colors.accent : colors.secondaryText,
-                  size: 20,
-                ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.06),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: colors.primaryText,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        if (distance > 0) ...[
-                          Icon(Icons.near_me_outlined,
-                              size: 13, color: colors.secondaryText),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${distance.toStringAsFixed(0)}m away',
-                            style: TextStyle(
-                              color: colors.secondaryText,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                        if (memberCount > 0) ...[
-                          const SizedBox(width: 12),
-                          Icon(Icons.people_outline_rounded,
-                              size: 13, color: colors.secondaryText),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$memberCount',
-                            style: TextStyle(
-                              color: colors.secondaryText,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (joined)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: colors.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'Joined',
-                    style: TextStyle(
-                      color: colors.accent,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                )
-              else if (loading)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.accent,
-                  ),
-                )
-              else
-                Icon(Icons.chevron_right_rounded,
-                    color: colors.disabled),
             ],
           ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top Row: Category / Space Icon + Distance Badge
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1A2029) : colors.surface2,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: colors.outline),
+                    ),
+                    child: Icon(
+                      joined ? Icons.forum_rounded : Icons.radar_rounded,
+                      color: joined
+                          ? colors.tertiary
+                          : (isDark
+                              ? const Color(0xFFAFC5FF)
+                              : colors.accent),
+                      size: 20,
+                    ),
+                  ),
+                  if (distance > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color:
+                            isDark ? const Color(0xFF151A21) : colors.surface2,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: colors.outline),
+                      ),
+                      child: Text(
+                        '${distance.toStringAsFixed(0)}m',
+                        style: SpaceTypography.technical(
+                          color: isDark
+                              ? const Color(0xFFAFC5FF)
+                              : colors.accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Space Name
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SpaceTypography.headingSmall(
+                  color: colors.primaryText,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 19,
+                ),
+              ),
+              const SizedBox(height: 4),
+
+              // Space Description
+              if (description != null && description!.trim().isNotEmpty) ...[
+                Text(
+                  description!.trim(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: SpaceTypography.bodyMedium(
+                    color: colors.secondaryText,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ] else
+                const SizedBox(height: 6),
+
+              // Activity & Active Members Row
+              Row(
+                children: [
+                  // Overlapping avatar dots indicator
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _AvatarDot(color: colors.accent),
+                      Transform.translate(
+                        offset: const Offset(-4, 0),
+                        child: _AvatarDot(color: colors.secondaryAccent),
+                      ),
+                      Transform.translate(
+                        offset: const Offset(-8, 0),
+                        child: _AvatarDot(color: colors.tertiary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: colors.tertiary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    memberCount > 0 ? '$memberCount Active' : 'Active',
+                    style: SpaceTypography.technical(
+                      color: colors.secondaryText,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Action Button: JOIN SEQUENCE / ENTER SPACE / JOINED
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: OutlinedButton(
+                  onPressed: onTap,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: joined
+                        ? colors.tertiary.withValues(alpha: 0.12)
+                        : (isDark ? Colors.transparent : colors.surface2),
+                    foregroundColor: joined
+                        ? colors.tertiary
+                        : (isDark
+                            ? const Color(0xFFAFC5FF)
+                            : colors.accent),
+                    side: BorderSide(
+                      color: joined
+                          ? colors.tertiary.withValues(alpha: 0.5)
+                          : colors.accent,
+                      width: 1.2,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  child: loading
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colors.accent,
+                          ),
+                        )
+                      : Text(
+                          joined ? 'JOINED' : 'JOIN SEQUENCE',
+                          style: SpaceTypography.technical(
+                            color: joined
+                                ? colors.tertiary
+                                : (isDark
+                                    ? const Color(0xFFAFC5FF)
+                                    : colors.accent),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AvatarDot extends StatelessWidget {
+  const _AvatarDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          width: 1.5,
         ),
       ),
     );
@@ -1951,58 +2644,69 @@ class ChatComposer extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onSend,
+    this.spaceName = 'Space',
     this.replyingTo,
     this.onCancelReply,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
+  final String spaceName;
   final ChatMessage? replyingTo;
   final VoidCallback? onCancelReply;
 
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 18),
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 8, 8, 8),
+          padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
           decoration: BoxDecoration(
             color: colors.surface,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(color: colors.outline),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (replyingTo != null)
                 Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  margin: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: colors.card,
+                    color: colors.surface2,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: colors.outlineSubtle),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.reply_rounded,
-                          size: 14, color: colors.secondaryText),
+                      Container(
+                        width: 3,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: colors.secondaryAccent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Replying to ${replyingTo!.name}: '
-                          '${replyingTo!.text}',
+                          'Replying to ${replyingTo!.name}: ${replyingTo!.text}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: colors.secondaryText,
-                            fontSize: 12,
-                          ),
+                          style: SpaceTypography.bodySmall(color: colors.secondaryText),
                         ),
                       ),
                       if (onCancelReply != null)
@@ -2019,31 +2723,64 @@ class ChatComposer extends StatelessWidget {
                 ),
               Row(
                 children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1A2029) : colors.surface2,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: colors.outline),
+                    ),
+                    child: Icon(
+                      Icons.radar_rounded,
+                      color: isDark ? const Color(0xFFAFC5FF) : colors.accent,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
                       controller: controller,
                       minLines: 1,
                       maxLines: 4,
-                      style: TextStyle(fontSize: 15, color: colors.primaryText),
+                      style: SpaceTypography.bodyMedium(
+                        color: colors.primaryText,
+                        fontWeight: FontWeight.w500,
+                      ),
                       decoration: InputDecoration(
-                        hintText: 'Message...',
-                        hintStyle: TextStyle(color: colors.disabled),
+                        hintText: 'Message $spaceName anonymously...',
+                        hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
                         border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       ),
                       onSubmitted: (_) => onSend(),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: onSend,
-                    style: IconButton.styleFrom(
-                      backgroundColor: colors.accent,
-                      foregroundColor: colors.onAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(17),
+                  InkWell(
+                    onTap: onSend,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: colors.accent,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.accent.withValues(alpha: 0.35),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 18,
+                        color: colors.onAccent,
                       ),
                     ),
-                    icon: const Icon(Icons.arrow_forward_rounded),
                   ),
                 ],
               ),
@@ -2059,111 +2796,179 @@ class MessageCard extends StatelessWidget {
   const MessageCard({
     super.key,
     required this.message,
+    this.isMe = false,
     this.onLongPress,
   });
 
   final ChatMessage message;
+  final bool isMe;
   final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: colors.outline),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                StatusDot(color: colors.accent),
-                const SizedBox(width: 9),
-                Text(
-                  message.name,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: colors.primaryText,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.82,
+          ),
+          child: Column(
+            crossAxisAlignment:
+                isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              // Sender Name (For incoming messages)
+              if (!isMe)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6, bottom: 4),
+                  child: Text(
+                    message.name,
+                    style: SpaceTypography.technical(
+                      color: isDark ? const Color(0xFFAFC5FF) : colors.accent,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ],
-            ),
-            if (message.replyText != null) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: colors.outlineSubtle),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.reply_rounded,
-                        size: 13, color: colors.secondaryText),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '${message.replyText}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.secondaryText,
-                          fontSize: 12,
-                        ),
-                      ),
+
+              // Message Bubble
+              GestureDetector(
+                onLongPress: onLongPress,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 15, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: isMe
+                        ? (isDark
+                            ? const Color(0xFF101A2A)
+                            : const Color(0xFFEEF4FF))
+                        : (isDark ? colors.surface : colors.surface),
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: isMe
+                          ? const Radius.circular(18)
+                          : const Radius.circular(4),
+                      bottomRight: isMe
+                          ? const Radius.circular(4)
+                          : const Radius.circular(18),
                     ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Text(
-              message.text,
-              style: TextStyle(
-                fontSize: 16,
-                height: 1.35,
-                color: colors.primaryText,
-              ),
-            ),
-            if (message.reactions.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final entry in message.reactions.entries)
-                    if (entry.value > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: colors.surface,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: colors.outlineSubtle),
-                        ),
-                        child: Text(
-                          '${entry.key} ${entry.value}',
-                          style: TextStyle(
-                            color: colors.secondaryText,
-                            fontSize: 12,
+                    border: Border.all(
+                      color: isMe
+                          ? colors.accent
+                          : colors.outline,
+                      width: isMe ? 1.2 : 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black
+                            .withValues(alpha: isDark ? 0.25 : 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: isMe
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    children: [
+                      // Quoted Reply Preview
+                      if (message.replyText != null) ...[
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF080D14)
+                                : colors.surface2,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border(
+                              left: BorderSide(
+                                color: isMe
+                                    ? colors.accent
+                                    : colors.secondaryAccent,
+                                width: 3,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.reply_rounded,
+                                  size: 13, color: colors.secondaryText),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '${message.replyText}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: SpaceTypography.bodySmall(
+                                    color: colors.secondaryText,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                      ],
+
+                      // Message Content Text
+                      Text(
+                        message.text,
+                        style: SpaceTypography.bodyLarge(
+                          color: isMe
+                              ? (isDark
+                                  ? const Color(0xFFAFC5FF)
+                                  : const Color(0xFF1E3A8A))
+                              : (isDark
+                                  ? const Color(0xFFD8DEE9)
+                                  : colors.primaryText),
+                          fontSize: 14.5,
+                          height: 1.35,
+                        ),
                       ),
-                ],
+                    ],
+                  ),
+                ),
               ),
+
+              // Reactions
+              if (message.reactions.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    for (final entry in message.reactions.entries)
+                      if (entry.value > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: colors.surface2,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: colors.outline),
+                          ),
+                          child: Text(
+                            '${entry.key} ${entry.value}',
+                            style: SpaceTypography.technical(
+                              color: colors.primaryText,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                  ],
+                ),
+              ],
             ],
-            const SizedBox(height: 4),
-          ],
+          ),
         ),
       ),
     );
@@ -2190,7 +2995,7 @@ class StepCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: colors.card,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: colors.outline),
       ),
       child: Column(
@@ -2198,16 +3003,12 @@ class StepCard extends StatelessWidget {
         children: [
           Text(
             step,
-            style: TextStyle(color: colors.disabled, fontSize: 12),
+            style: SpaceTypography.technical(color: colors.secondaryAccent, fontSize: 10),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
           Text(
             title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: colors.primaryText,
-            ),
+            style: SpaceTypography.headingSmall(color: colors.primaryText),
           ),
           const SizedBox(height: 14),
           child,
@@ -2218,9 +3019,10 @@ class StepCard extends StatelessWidget {
 }
 
 class SpaceTextField extends StatelessWidget {
-  const SpaceTextField({super.key, required this.controller});
+  const SpaceTextField({super.key, required this.controller, this.hintText});
 
   final TextEditingController controller;
+  final String? hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -2228,21 +3030,24 @@ class SpaceTextField extends StatelessWidget {
 
     return TextField(
       controller: controller,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: colors.primaryText,
-      ),
+      style: SpaceTypography.bodyLarge(color: colors.primaryText, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
         filled: true,
-        fillColor: colors.surface,
+        fillColor: colors.surface2,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
-          borderSide: BorderSide.none,
-          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.outline),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: colors.outline),
+          borderRadius: BorderRadius.circular(16),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: colors.accent),
-          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: colors.accent, width: 1.5),
+          borderRadius: BorderRadius.circular(16),
         ),
       ),
     );
@@ -2266,21 +3071,16 @@ class ChoicePill extends StatelessWidget {
     final colors = SpaceColors.of(context);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
-          color: selected
-              ? colors.accent.withValues(alpha: 0.14)
-              : colors.surface,
-          borderRadius: BorderRadius.circular(18),
+          color: selected ? colors.accent.withValues(alpha: 0.15) : colors.surface2,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected
-                ? colors.accent
-                : colors.outline,
+            color: selected ? colors.accent : colors.outline,
           ),
         ),
         child: Row(
@@ -2290,12 +3090,12 @@ class ChoicePill extends StatelessWidget {
               color: selected ? colors.accent : colors.disabled,
               hollow: !selected,
             ),
-            const SizedBox(width: 9),
+            const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: colors.primaryText,
+              style: SpaceTypography.bodyMedium(
+                color: selected ? colors.primaryText : colors.secondaryText,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
           ],
@@ -2306,8 +3106,7 @@ class ChoicePill extends StatelessWidget {
 }
 
 class GeofenceDecisionPanel extends StatelessWidget {
-  const GeofenceDecisionPanel(
-      {super.key, required this.validation});
+  const GeofenceDecisionPanel({super.key, required this.validation});
 
   final GeofenceValidationResult validation;
 
@@ -2315,59 +3114,58 @@ class GeofenceDecisionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
     final color = switch (validation.decision) {
-      GeofenceDecision.inside => colors.accent,
+      GeofenceDecision.inside => colors.tertiary,
       GeofenceDecision.nearBoundary => colors.warning,
       GeofenceDecision.outside => colors.dangerStrong,
       GeofenceDecision.lowAccuracy => colors.warning,
       GeofenceDecision.rejected => colors.dangerStrong,
     };
     final label = switch (validation.decision) {
-      GeofenceDecision.inside => 'Inside',
+      GeofenceDecision.inside => 'Inside perimeter',
       GeofenceDecision.nearBoundary => 'Near boundary',
-      GeofenceDecision.outside => 'Outside',
+      GeofenceDecision.outside => 'Outside perimeter',
       GeofenceDecision.lowAccuracy => 'Low accuracy',
       GeofenceDecision.rejected => 'Rejected',
     };
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(18),
+        color: colors.surface2,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colors.outline),
       ),
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.12),
-              border: Border.all(color: color.withValues(alpha: 0.3)),
+              color: color.withValues(alpha: 0.14),
+              border: Border.all(color: color.withValues(alpha: 0.35)),
             ),
-            child: Icon(Icons.radar_rounded, color: color, size: 20),
+            child: Icon(Icons.radar_rounded, color: color, size: 18),
           ),
-          const SizedBox(width: 13),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                  style: SpaceTypography.bodyMedium(
                     color: colors.primaryText,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   '${validation.distanceMeters.toStringAsFixed(1)}m from center',
-                  style: TextStyle(
+                  style: SpaceTypography.technical(
                     color: colors.secondaryText,
-                    fontSize: 12,
+                    fontSize: 11,
                   ),
                 ),
               ],
@@ -2408,14 +3206,18 @@ class SpaceButton extends StatelessWidget {
                 color: colors.onAccent,
               ),
             )
-          : Icon(icon, size: 19),
+          : Icon(icon, size: 18),
       label: Text(label),
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(54),
+        minimumSize: const Size.fromHeight(52),
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
+        textStyle: SpaceTypography.headingSmall(
+          color: colors.onAccent,
+          fontWeight: FontWeight.w700,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 0,
       ),
     );
   }
@@ -2431,14 +3233,14 @@ class SpaceScaffold extends StatelessWidget {
     final colors = SpaceColors.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: colors.background,
       body: Container(
         decoration: BoxDecoration(
           gradient: RadialGradient(
             center: Alignment.topRight,
-            radius: 1.2,
+            radius: 1.3,
             colors: [colors.gradientTop, colors.gradientBottom],
-            stops: const [0, 0.58],
+            stops: const [0, 0.65],
           ),
         ),
         child: Material(
@@ -2451,8 +3253,7 @@ class SpaceScaffold extends StatelessWidget {
 }
 
 class StatusDot extends StatelessWidget {
-  const StatusDot(
-      {super.key, required this.color, this.hollow = false});
+  const StatusDot({super.key, required this.color, this.hollow = false});
 
   final Color color;
   final bool hollow;
@@ -2460,8 +3261,8 @@ class StatusDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 11,
-      height: 11,
+      width: 9,
+      height: 9,
       decoration: BoxDecoration(
         color: hollow ? Colors.transparent : color,
         shape: BoxShape.circle,
@@ -2534,13 +3335,13 @@ class _ReactionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(14),
+          color: colors.surface2,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: colors.outline),
         ),
-        child: Text(emoji, style: const TextStyle(fontSize: 20)),
+        child: Text(emoji, style: const TextStyle(fontSize: 19)),
       ),
     );
   }

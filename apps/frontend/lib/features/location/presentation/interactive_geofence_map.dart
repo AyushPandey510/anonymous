@@ -78,6 +78,13 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
         color: colors.surface,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: colors.outline),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Stack(
         children: [
@@ -109,8 +116,8 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
                     point: point,
                     radius: widget.radiusMeters.toDouble(),
                     useRadiusInMeter: true,
-                    color: decisionColor.withValues(alpha: 0.12),
-                    borderColor: decisionColor.withValues(alpha: 0.45),
+                    color: decisionColor.withValues(alpha: 0.14),
+                    borderColor: decisionColor.withValues(alpha: 0.55),
                     borderStrokeWidth: 2,
                   ),
                 ],
@@ -218,83 +225,76 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
   ) {
     return ColorFiltered(
       colorFilter: const ColorFilter.matrix([
-        -0.55, 0, 0, 0, 150,
-        0, -0.55, 0, 0, 150,
-        0, 0, -0.55, 0, 150,
-        0, 0, 0, 1, 0,
+        -0.85, 0.00, 0.00, 0.0, 255.0,
+        0.00, -0.85, 0.00, 0.0, 255.0,
+        0.00, 0.00, -0.85, 0.0, 255.0,
+        0.00, 0.00, 0.00, 1.0, 0.0,
       ]),
-      child: Opacity(opacity: 0.78, child: tileWidget),
+      child: ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          0.30, 0.59, 0.11, 0.0, 0.0,
+          0.30, 0.59, 0.11, 0.0, 0.0,
+          0.30, 0.59, 0.11, 0.0, 0.0,
+          0.00, 0.00, 0.00, 1.0, 0.0,
+        ]),
+        child: tileWidget,
+      ),
     );
-  }
-
-  void _onSearchChanged(String value) {
-    _debounce?.cancel();
-    final query = value.trim();
-    if (query.length < 3) {
-      setState(() {
-        _results = const [];
-        _status = null;
-      });
-      return;
-    }
-
-    _debounce = Timer(const Duration(milliseconds: 380), () async {
-      setState(() {
-        _searching = true;
-        _status = 'Searching...';
-      });
-      try {
-        final results = await _searchRepository.search(query);
-        if (!mounted) return;
-        setState(() {
-          _results = results;
-          _status = results.isEmpty ? 'No matching places found' : null;
-        });
-      } catch (_) {
-        if (!mounted) return;
-        setState(() {
-          _results = const [];
-          _status = 'Search is unavailable';
-        });
-      } finally {
-        if (mounted) setState(() => _searching = false);
-      }
-    });
-  }
-
-  Future<void> _centerOnUser() async {
-    setState(() {
-      _locating = true;
-      _status = 'Locating...';
-    });
-    try {
-      final fix = await _locationService.currentFix();
-      widget.onAccuracyChanged(fix.accuracyMeters ?? 75);
-      _moveTo(_latLng(fix.point), zoom: 17);
-      if (!mounted) return;
-      setState(
-        () => _status = 'Accuracy ${fix.accuracyMeters?.round() ?? '?'}m',
-      );
-    } on SpaceLocationException catch (error) {
-      if (!mounted) return;
-      setState(() => _status = _permissionMessage(error.state));
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _status = 'Could not get current location');
-    } finally {
-      if (mounted) setState(() => _locating = false);
-    }
-  }
-
-  void _moveTo(LatLng point, {required double zoom}) {
-    _mapController.move(point, zoom);
-    _selectPoint(point);
   }
 
   void _selectPoint(LatLng point) {
     widget.onPointChanged(
       GeoPoint(latitude: point.latitude, longitude: point.longitude),
     );
+  }
+
+  void _moveTo(LatLng point, {double? zoom}) {
+    final targetZoom = zoom ?? _mapController.camera.zoom;
+    _mapController.move(point, targetZoom);
+    _selectPoint(point);
+  }
+
+  Future<void> _centerOnUser() async {
+    setState(() => _locating = true);
+    try {
+      final perm = await _locationService.permissionState();
+      if (perm != SpaceLocationPermissionState.granted) {
+        setState(() => _status = _permissionMessage(perm));
+        return;
+      }
+      final fix = await _locationService.currentFix();
+      if (!mounted) return;
+      widget.onAccuracyChanged(fix.accuracyMeters ?? 20);
+      _moveTo(LatLng(fix.point.latitude, fix.point.longitude), zoom: 16);
+      setState(() => _status = null);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _status = 'Could not get current location');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _locating = false);
+      }
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() => _results = const []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 350), () async {
+      setState(() => _searching = true);
+      try {
+        final res = await _searchRepository.search(query);
+        if (mounted) setState(() => _results = res);
+      } catch (_) {
+        if (mounted) setState(() => _results = const []);
+      } finally {
+        if (mounted) setState(() => _searching = false);
+      }
+    });
   }
 
   LatLng _latLng(GeoPoint point) => LatLng(point.latitude, point.longitude);
@@ -313,7 +313,7 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
 
   Color _decisionColor(SpaceColors colors, GeofenceDecision decision) {
     return switch (decision) {
-      GeofenceDecision.inside => colors.accent,
+      GeofenceDecision.inside => colors.tertiary,
       GeofenceDecision.nearBoundary => colors.warning,
       GeofenceDecision.outside => colors.dangerStrong,
       GeofenceDecision.lowAccuracy => colors.warning,
@@ -340,8 +340,8 @@ class _SearchBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 2, 10, 2),
       decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(18),
+        color: colors.surface2.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colors.outline),
       ),
       child: Row(
@@ -356,15 +356,16 @@ class _SearchBox extends StatelessWidget {
             child: TextField(
               controller: controller,
               onChanged: onChanged,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+              style: SpaceTypography.bodyMedium(
                 color: colors.primaryText,
+                fontWeight: FontWeight.w600,
               ),
               decoration: InputDecoration(
-                hintText: 'Search address or paste coordinates',
-                hintStyle: TextStyle(color: colors.disabled),
+                hintText: 'Search address or coordinates',
+                hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
                 border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
             ),
           ),
@@ -396,9 +397,16 @@ class _SearchResults extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(maxHeight: 180),
       decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: 0.96),
+        color: colors.surface.withValues(alpha: 0.98),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: colors.outline),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: ListView.separated(
         shrinkWrap: true,
@@ -419,15 +427,17 @@ class _SearchResults extends StatelessWidget {
               result.label,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+              style: SpaceTypography.bodyMedium(
                 color: colors.primaryText,
+                fontWeight: FontWeight.w600,
               ),
             ),
             subtitle: Text(
               '${result.point.latitude.toStringAsFixed(5)}, ${result.point.longitude.toStringAsFixed(5)}',
-              style: TextStyle(color: colors.disabled, fontSize: 11),
+              style: SpaceTypography.technical(
+                color: colors.disabled,
+                fontSize: 10,
+              ),
             ),
             onTap: () => onSelected(result),
           );
@@ -455,24 +465,24 @@ class _MapStatus extends StatelessWidget {
     final colors = SpaceColors.of(context);
     final text =
         status ??
-        '${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)} • ${radiusMeters}m';
+        '${point.latitude.toStringAsFixed(4)}° N, ${point.longitude.toStringAsFixed(4)}° E • ${radiusMeters}m';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: 0.90),
-        borderRadius: BorderRadius.circular(16),
+        color: colors.surface2.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: colors.outline),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            validation.canParticipate
-                ? Icons.verified_rounded
-                : Icons.info_outline_rounded,
-            color: validation.canParticipate
-                ? colors.accent
-                : colors.warning,
-            size: 16,
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: validation.canParticipate ? colors.tertiary : colors.warning,
+              shape: BoxShape.circle,
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -480,7 +490,10 @@ class _MapStatus extends StatelessWidget {
               text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: colors.secondaryText, fontSize: 12),
+              style: SpaceTypography.technical(
+                color: colors.secondaryText,
+                fontSize: 11,
+              ),
             ),
           ),
         ],
@@ -507,11 +520,11 @@ class _MapIconButton extends StatelessWidget {
     return IconButton(
       onPressed: loading ? null : onTap,
       style: IconButton.styleFrom(
-        backgroundColor: colors.surface.withValues(alpha: 0.92),
+        backgroundColor: colors.surface2.withValues(alpha: 0.94),
         foregroundColor: colors.primaryText,
         disabledForegroundColor: colors.disabled,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: colors.outline),
         ),
       ),
@@ -528,4 +541,3 @@ class _MapIconButton extends StatelessWidget {
     );
   }
 }
-

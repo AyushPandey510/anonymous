@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class _PendingRequest {
@@ -15,7 +16,8 @@ class ApiClient {
   String? refreshToken;
   _PendingRequest? _lastRequest;
 
-  ApiClient(this.baseUrl, {http.Client? client}) : _client = client ?? http.Client();
+  ApiClient(this.baseUrl, {http.Client? client})
+      : _client = client ?? http.Client();
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -67,17 +69,23 @@ class ApiClient {
     Map<String, dynamic>? body,
   ) async {
     final uri = Uri.parse('$baseUrl$path');
-    switch (method) {
-      case 'GET':
-        return _client.get(uri, headers: _headers);
-      case 'POST':
-        return _client.post(
-          uri,
-          headers: _headers,
-          body: body != null ? jsonEncode(body) : null,
-        );
-      default:
-        throw ArgumentError('Unsupported method: $method');
+    debugPrint('[Space Network] --> $method $uri');
+    try {
+      final response = await (switch (method) {
+        'GET' => _client.get(uri, headers: _headers),
+        'POST' => _client.post(
+            uri,
+            headers: _headers,
+            body: body != null ? jsonEncode(body) : null,
+          ),
+        _ => throw ArgumentError('Unsupported method: $method'),
+      }).timeout(const Duration(seconds: 10));
+
+      debugPrint('[Space Network] <-- [${response.statusCode}] $path');
+      return response;
+    } catch (e) {
+      debugPrint('[Space Network] ❌ Connection failed for $uri: $e');
+      rethrow;
     }
   }
 
@@ -88,7 +96,7 @@ class ApiClient {
         Uri.parse('$baseUrl/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh_token': refreshToken}),
-      );
+      ).timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         accessToken = data['access_token'] as String;
