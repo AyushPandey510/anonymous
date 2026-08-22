@@ -24,7 +24,10 @@ impl Config {
             ),
             session_ttl: Duration::from_secs(env_u64("SESSION_TTL_HOURS", 2) * 3600),
             session_grace: Duration::from_secs(env_u64("SESSION_GRACE_SECONDS", 120)),
-            geofence_check_interval: Duration::from_secs(env_u64("GEOFENCE_CHECK_INTERVAL_SECONDS", 30)),
+            geofence_check_interval: Duration::from_secs(env_u64(
+                "GEOFENCE_CHECK_INTERVAL_SECONDS",
+                30,
+            )),
         })
     }
 }

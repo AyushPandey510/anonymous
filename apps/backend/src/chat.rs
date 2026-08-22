@@ -35,9 +35,10 @@ pub struct ReportMessageRequest {
     pub reason: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Validate)]
 pub struct ReactRequest {
     pub session_id: Uuid,
+    #[validate(length(min = 1, max = 16))]
     pub emoji: String,
 }
 
@@ -111,6 +112,11 @@ pub async fn send_message(
         .map_err(|error| ApiError::Validation(error.to_string()))?;
     let anonymous_id =
         active_session_anonymous_id(&state, user_id, space_id, payload.session_id).await?;
+    let reply_content = if let Some(reply_id) = payload.reply_to {
+        Some(validate_reply_target(&state, space_id, reply_id).await?)
+    } else {
+        None
+    };
 
     let mut message = sqlx::query_as::<_, Message>(
         r#"
@@ -127,14 +133,7 @@ pub async fn send_message(
     .fetch_one(&state.pool)
     .await?;
 
-    if let Some(reply_id) = message.reply_to {
-        message.reply_content = sqlx::query_scalar::<_, String>(
-            "SELECT content FROM activity.messages WHERE id = $1",
-        )
-        .bind(reply_id)
-        .fetch_optional(&state.pool)
-        .await?;
-    }
+    message.reply_content = reply_content;
 
     let _ = state
         .moderation_tx
@@ -162,6 +161,25 @@ pub async fn report_message(
     payload
         .validate()
         .map_err(|error| ApiError::Validation(error.to_string()))?;
+    let (space_id,) = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT space_id FROM activity.messages WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(message_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(ApiError::NotFound)?;
+
+    let has_session = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace') AND expires_at > now())",
+    )
+    .bind(reporter_id)
+    .bind(space_id)
+    .fetch_one(&state.pool)
+    .await?;
+    if !has_session {
+        return Err(ApiError::Forbidden);
+    }
+
     let report_id = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO activity.reports (reporter_id, message_id, reason) VALUES ($1, $2, $3) RETURNING id",
     )
@@ -209,18 +227,27 @@ pub async fn react_message(
     Path(message_id): Path<Uuid>,
     Json(payload): Json<ReactRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    payload
+        .validate()
+        .map_err(|error| ApiError::Validation(error.to_string()))?;
+    let emoji = payload.emoji.trim();
+    if emoji.is_empty() {
+        return Err(ApiError::Validation("emoji is required".to_string()));
+    }
+
     let session_space = sqlx::query_as::<_, (Uuid,)>("SELECT space_id FROM activity.sessions WHERE id = $1 AND user_id = $2 AND status = 'active' AND expires_at > now()")
         .bind(payload.session_id)
         .bind(user_id)
         .fetch_optional(&state.pool)
         .await?
         .ok_or(ApiError::Forbidden)?;
-    let message_space =
-        sqlx::query_as::<_, (Uuid,)>("SELECT space_id FROM activity.messages WHERE id = $1")
-            .bind(message_id)
-            .fetch_optional(&state.pool)
-            .await?
-            .ok_or(ApiError::NotFound)?;
+    let message_space = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT space_id FROM activity.messages WHERE id = $1 AND deleted_at IS NULL AND moderation_status <> 'hidden'",
+    )
+    .bind(message_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(ApiError::NotFound)?;
     let space_id = message_space.0;
     if session_space.0 != space_id {
         return Err(ApiError::Forbidden);
@@ -229,7 +256,7 @@ pub async fn react_message(
     sqlx::query("INSERT INTO activity.reactions (message_id, session_id, emoji) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
         .bind(message_id)
         .bind(payload.session_id)
-        .bind(&payload.emoji)
+        .bind(emoji)
         .execute(&state.pool)
         .await?;
 
@@ -237,14 +264,14 @@ pub async fn react_message(
         "SELECT COUNT(*) FROM activity.reactions WHERE message_id = $1 AND emoji = $2",
     )
     .bind(message_id)
-    .bind(&payload.emoji)
+    .bind(emoji)
     .fetch_one(&state.pool)
     .await?;
 
     let event = serde_json::json!({
         "type": "reaction",
         "message_id": message_id,
-        "emoji": payload.emoji,
+        "emoji": emoji,
         "count": count,
     });
     let _ = state.broadcast_sender(space_id).send(event.to_string());
@@ -315,4 +342,19 @@ async fn active_session_anonymous_id(
     .await?
     .ok_or(ApiError::Forbidden)?;
     Ok(row.0)
+}
+
+async fn validate_reply_target(
+    state: &Arc<AppState>,
+    space_id: Uuid,
+    reply_id: Uuid,
+) -> ApiResult<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT content FROM activity.messages WHERE id = $1 AND space_id = $2 AND deleted_at IS NULL AND moderation_status <> 'hidden'",
+    )
+    .bind(reply_id)
+    .bind(space_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(ApiError::NotFound)
 }

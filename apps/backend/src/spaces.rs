@@ -11,7 +11,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{Duration, Utc};
-use rand::seq::SliceRandom;
+use rand::{distributions::Alphanumeric, seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -157,9 +157,22 @@ pub async fn discover_spaces(
     .await?;
     let joined_set: std::collections::HashSet<Uuid> = joined_ids.into_iter().map(|r| r.0).collect();
 
-    let spaces = sqlx::query_as::<_, Space>(
+    let spaces = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            f64,
+            f64,
+            i32,
+            chrono::DateTime<chrono::Utc>,
+            i32,
+        ),
+    >(
         r#"
-        SELECT id, name, description, visibility::text, latitude, longitude, radius_meters, created_at
+        SELECT id, name, description, visibility::text, latitude, longitude, radius_meters, created_at, member_count
         FROM activity.spaces
         WHERE archived_at IS NULL AND visibility = 'public'
         ORDER BY created_at DESC
@@ -178,33 +191,34 @@ pub async fn discover_spaces(
         .filter(|space| {
             geofence::contains(
                 Point {
-                    latitude: space.latitude,
-                    longitude: space.longitude,
+                    latitude: space.4,
+                    longitude: space.5,
                 },
-                space.radius_meters,
+                space.6,
                 here,
             )
         })
         .map(|space| {
             let dist = geofence::distance_meters(
                 Point {
-                    latitude: space.latitude,
-                    longitude: space.longitude,
+                    latitude: space.4,
+                    longitude: space.5,
                 },
                 here,
             );
+            let joined = joined_set.contains(&space.0);
             SpaceWithDistance {
-                id: space.id,
-                name: space.name,
-                description: space.description,
-                visibility: space.visibility,
-                latitude: space.latitude,
-                longitude: space.longitude,
-                radius_meters: space.radius_meters,
-                created_at: space.created_at,
+                id: space.0,
+                name: space.1,
+                description: space.2,
+                visibility: space.3,
+                latitude: space.4,
+                longitude: space.5,
+                radius_meters: space.6,
+                created_at: space.7,
                 distance_meters: (dist * 10.0).round() / 10.0,
-                member_count: 0,
-                joined: joined_set.contains(&space.id),
+                member_count: space.8,
+                joined,
             }
         })
         .collect();
@@ -338,8 +352,9 @@ pub async fn leave_space(
     .await?;
 
     if result.rows_affected() > 0 {
-        sqlx::query("UPDATE activity.spaces SET member_count = GREATEST(member_count - 1, 0) WHERE id = $1")
+        sqlx::query("UPDATE activity.spaces SET member_count = GREATEST(member_count - $2::integer, 0) WHERE id = $1")
             .bind(space_id)
+            .bind(result.rows_affected() as i32)
             .execute(&state.pool)
             .await?;
     }
@@ -409,10 +424,16 @@ fn random_anonymous_name() -> String {
         "Fox", "Wolf", "Panda", "Comet", "Signal", "Orbit", "Nova", "Echo",
     ];
     let mut rng = rand::thread_rng();
+    let suffix: String = (&mut rng)
+        .sample_iter(&Alphanumeric)
+        .take(4)
+        .map(char::from)
+        .collect();
     format!(
-        "{}{}",
+        "{}{}{}",
         adjectives.choose(&mut rng).unwrap(),
-        nouns.choose(&mut rng).unwrap()
+        nouns.choose(&mut rng).unwrap(),
+        suffix
     )
 }
 

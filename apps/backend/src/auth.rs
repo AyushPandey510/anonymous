@@ -76,12 +76,11 @@ pub async fn register(
         return Err(ApiError::Validation("device_id is required".to_string()));
     }
 
-    let existing = sqlx::query_as::<_, (Uuid,)>(
-        "SELECT id FROM identity.users WHERE device_id = $1",
-    )
-    .bind(&payload.device_id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let existing =
+        sqlx::query_as::<_, (Uuid,)>("SELECT id FROM identity.users WHERE device_id = $1")
+            .bind(&payload.device_id)
+            .fetch_optional(&state.pool)
+            .await?;
 
     let (user_id, is_new) = if let Some((id,)) = existing {
         sqlx::query("UPDATE identity.users SET last_seen_at = now(), device_name = COALESCE($2, device_name) WHERE id = $1")

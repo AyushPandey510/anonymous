@@ -88,8 +88,8 @@ pub async fn validate_location(
     )
     .await?;
 
-    let effective_state = effective_lifecycle_state(&state.pool, user_id, payload.space_id, lifecycle_state)
-        .await?;
+    let effective_state =
+        effective_lifecycle_state(&state.pool, user_id, payload.space_id, lifecycle_state).await?;
 
     Ok(Json(ValidateLocationResponse {
         decision: decision.to_string(),
@@ -119,7 +119,7 @@ async fn effective_lifecycle_state<'a>(
     fallback: &'a str,
 ) -> ApiResult<&'a str> {
     let session = sqlx::query_as::<_, (String, DateTime<Utc>)>(
-        "SELECT status, expires_at FROM activity.sessions WHERE user_id = $1 AND space_id = $2 ORDER BY created_at DESC LIMIT 1",
+        "SELECT status, expires_at FROM activity.sessions WHERE user_id = $1 AND space_id = $2 ORDER BY joined_at DESC LIMIT 1",
     )
     .bind(user_id)
     .bind(space_id)
@@ -133,7 +133,9 @@ fn resolve_lifecycle_state<'a>(
     fallback: &'a str,
 ) -> &'a str {
     match session {
-        Some((status, expires)) if status == "expired" || (status == "grace" && *expires <= Utc::now()) => {
+        Some((status, expires))
+            if status == "expired" || (status == "grace" && *expires <= Utc::now()) =>
+        {
             "expired"
         }
         _ => fallback,
@@ -203,32 +205,53 @@ mod tests {
     use super::*;
 
     fn session(status: &str, minutes_from_now: i64) -> (String, DateTime<Utc>) {
-        (status.to_string(), Utc::now() + Duration::minutes(minutes_from_now))
+        (
+            status.to_string(),
+            Utc::now() + Duration::minutes(minutes_from_now),
+        )
     }
 
     #[test]
     fn active_session_keeps_fallback_state() {
-        assert_eq!(resolve_lifecycle_state(Some(&session("active", 30)), "grace_period"), "grace_period");
-        assert_eq!(resolve_lifecycle_state(Some(&session("active", 30)), "outside"), "outside");
+        assert_eq!(
+            resolve_lifecycle_state(Some(&session("active", 30)), "grace_period"),
+            "grace_period"
+        );
+        assert_eq!(
+            resolve_lifecycle_state(Some(&session("active", 30)), "outside"),
+            "outside"
+        );
     }
 
     #[test]
     fn active_grace_session_keeps_fallback_state() {
-        assert_eq!(resolve_lifecycle_state(Some(&session("grace", 1)), "grace_period"), "grace_period");
+        assert_eq!(
+            resolve_lifecycle_state(Some(&session("grace", 1)), "grace_period"),
+            "grace_period"
+        );
     }
 
     #[test]
     fn expired_grace_session_resolves_to_expired() {
-        assert_eq!(resolve_lifecycle_state(Some(&session("grace", -1)), "grace_period"), "expired");
+        assert_eq!(
+            resolve_lifecycle_state(Some(&session("grace", -1)), "grace_period"),
+            "expired"
+        );
     }
 
     #[test]
     fn expired_session_resolves_to_expired() {
-        assert_eq!(resolve_lifecycle_state(Some(&session("expired", 0)), "inside"), "expired");
+        assert_eq!(
+            resolve_lifecycle_state(Some(&session("expired", 0)), "inside"),
+            "expired"
+        );
     }
 
     #[test]
     fn missing_session_keeps_fallback_state() {
-        assert_eq!(resolve_lifecycle_state(None, "grace_period"), "grace_period");
+        assert_eq!(
+            resolve_lifecycle_state(None, "grace_period"),
+            "grace_period"
+        );
     }
 }

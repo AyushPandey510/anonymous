@@ -30,7 +30,8 @@ struct ErrorBody<'a> {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let status = match self {
+        let error = self.to_string();
+        let status = match &self {
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
             ApiError::Forbidden => StatusCode::FORBIDDEN,
             ApiError::NotFound => StatusCode::NOT_FOUND,
@@ -38,13 +39,10 @@ impl IntoResponse for ApiError {
             ApiError::Conflict(_) => StatusCode::CONFLICT,
             ApiError::Db(_) | ApiError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (
-            status,
-            Json(ErrorBody {
-                error: &self.to_string(),
-            }),
-        )
-            .into_response()
+        if matches!(self, ApiError::Db(_) | ApiError::Internal(_)) {
+            tracing::error!(%error, "request failed");
+        }
+        (status, Json(ErrorBody { error: &error })).into_response()
     }
 }
 
