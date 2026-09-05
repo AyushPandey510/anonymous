@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:space_mobile/features/location/data/location_service.dart';
@@ -11,11 +10,11 @@ import 'package:space_mobile/features/location/domain/geo_point.dart';
 import 'package:space_mobile/features/location/domain/location_fix.dart';
 import 'package:space_mobile/features/location/presentation/interactive_geofence_map.dart';
 import 'package:space_mobile/features/location/presentation/location_selection_screen.dart';
-import 'package:space_mobile/features/splash/animated_splash_screen.dart';
 import 'package:space_mobile/services/api_client.dart';
 import 'package:space_mobile/services/api_service.dart';
 import 'package:space_mobile/services/auth_service.dart';
 import 'package:space_mobile/services/chat_socket.dart';
+import 'package:space_mobile/config/app_config.dart';
 import 'package:space_mobile/theme.dart';
 
 void main() {
@@ -882,60 +881,6 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
   }
 }
 
-class _VisibilityOptionPill extends StatelessWidget {
-  const _VisibilityOptionPill({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = SpaceColors.of(context);
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: selected ? colors.accent.withValues(alpha: 0.12) : colors.surface2,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? colors.accent : colors.outline,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: selected ? colors.accent : colors.disabled,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: SpaceTypography.bodyMedium(
-                color: selected ? colors.primaryText : colors.secondaryText,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
@@ -1583,7 +1528,6 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SpaceScaffold(
       child: SafeArea(
@@ -1606,7 +1550,7 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                 children: [
                   Text.rich(
                     TextSpan(
-                      text: '$_greeting,\n',
+                      text: '$_greeting\n',
                       children: [
                         TextSpan(
                           text: 'Explorer.',
@@ -2082,7 +2026,6 @@ class _GlassIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SizedBox(
       width: 44,
@@ -2531,7 +2474,6 @@ class ChatComposer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SafeArea(
       top: false,
@@ -2659,8 +2601,8 @@ class ChatComposer extends StatelessWidget {
                           size: 21,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],

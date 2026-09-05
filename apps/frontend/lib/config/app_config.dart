@@ -9,10 +9,10 @@ class AppConfig {
   // ===========================================================================
 
   /// 🟢 Set to `true` when running on Android EMULATOR
-  static const bool useEmulator = false;
+  static const bool useEmulator = true;
 
   /// 🟢 Set to `true` when running on PHYSICAL PHONE
-  static const bool usePhysicalDevice = true;
+  static const bool usePhysicalDevice = false;
 
   /// 🟢 Set to `true` when building PRODUCTION RELEASE APK
   static const bool useProduction = false;
@@ -25,7 +25,7 @@ class AppConfig {
   static const String emulatorUrl = 'http://10.0.2.2:8080';
 
   /// 2. Physical Device address (Your PC's Wi-Fi IP from ipconfig)
-  static const String physicalDeviceUrl = 'http://10.89.102.190:8080';
+  static const String physicalDeviceUrl = 'http://10.245.35.190:8080';
 
   /// 3. Production Live Backend address (HTTPS domain)
   static const String productionUrl = 'https://api.yourdomain.com';

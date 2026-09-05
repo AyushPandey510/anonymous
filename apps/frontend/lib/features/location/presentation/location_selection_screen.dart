@@ -2,13 +2,15 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../theme.dart';
 import '../data/location_service.dart';
 import '../domain/geo_point.dart';
+import '../domain/geofence.dart';
+import '../domain/geofence_validator.dart';
+import '../domain/location_fix.dart';
+import 'interactive_geofence_map.dart';
 
 const _orbitMotionDuration = Duration(milliseconds: 3200);
 
@@ -162,38 +164,37 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
   Future<void> _requestPermission() async {
     try {
       final perm = await _locationService.permissionState();
+      if (!mounted) return;
       if (perm != SpaceLocationPermissionState.granted) {
-        if (!silent && mounted) {
-          setState(() {
-            _errorMessage = _permissionMessage(perm);
-            _statusMessage = null;
-          });
-        }
+        setState(() => _error = _permissionMessage(perm));
         return;
       }
 
       final fix = await _locationService.currentFix();
       if (!mounted) return;
 
-      final newPoint = fix.point;
       setState(() {
-        _selectedPoint = newPoint;
-        _statusMessage = 'GPS Location Locked';
-        _errorMessage = null;
+        _selectedPoint = fix.point;
+        _accuracy = fix.accuracyMeters ?? 18;
+        _hasDeviceFix = true;
+        _error = null;
       });
-      _moveTo(_latLng(newPoint), zoom: 16);
-    } catch (e) {
-      if (!silent && mounted) {
-        setState(() {
-          _errorMessage = 'Could not acquire GPS position';
-          _statusMessage = null;
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _locating = false);
-      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not acquire GPS position');
     }
+  }
+
+  String _permissionMessage(SpaceLocationPermissionState state) {
+    return switch (state) {
+      SpaceLocationPermissionState.granted => 'Location ready',
+      SpaceLocationPermissionState.denied => 'Location permission denied',
+      SpaceLocationPermissionState.deniedForever =>
+        'Enable location in settings',
+      SpaceLocationPermissionState.servicesDisabled =>
+        'Location services are off',
+      SpaceLocationPermissionState.restricted => 'Location is restricted',
+    };
   }
 
   GeofenceValidationResult get _validation {
@@ -490,41 +491,7 @@ class _OrbitAnimation extends StatelessWidget {
                         ),
                       ),
                     ),
-
-                    const SizedBox(height: 12),
-
-                    // Action 2: Continue Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: FilledButton(
-                        onPressed: _locating ? null : _confirmLocation,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: colors.accent,
-                          foregroundColor: colors.onAccent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'CONTINUE TO SPACES',
-                              style: SpaceTypography.bodyLarge(
-                                color: colors.onAccent,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            const Icon(Icons.arrow_forward_rounded, size: 18),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

@@ -180,7 +180,7 @@ pub async fn report_message(
         return Err(ApiError::Forbidden);
     }
 
-    let report_id = sqlx::query_scalar::<_, Uuid>(
+    let report_id: Uuid = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO activity.reports (reporter_id, message_id, reason) VALUES ($1, $2, $3) RETURNING id",
     )
     .bind(reporter_id)
@@ -260,7 +260,7 @@ pub async fn react_message(
         .execute(&state.pool)
         .await?;
 
-    let count = sqlx::query_scalar::<_, i64>(
+    let count: i64 = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM activity.reactions WHERE message_id = $1 AND emoji = $2",
     )
     .bind(message_id)
