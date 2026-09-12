@@ -476,7 +476,6 @@ class _OrbitBackground extends StatelessWidget {
   }
 }
 
-
 class _OrbitCopy extends StatelessWidget {
   const _OrbitCopy({required this.compact});
 

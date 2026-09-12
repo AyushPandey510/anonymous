@@ -18,6 +18,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
+const MIN_RADIUS_METERS: i32 = 30;
 const MAX_RADIUS_METERS: i32 = 300;
 const MAX_ACTIVE_SPACES_PER_LOCATION: usize = 10;
 
@@ -30,7 +31,7 @@ pub struct CreateSpaceRequest {
     pub visibility: String,
     pub latitude: f64,
     pub longitude: f64,
-    #[validate(range(min = 1, max = 300))]
+    #[validate(range(min = 30, max = 300))]
     pub radius_meters: i32,
 }
 
@@ -388,14 +389,14 @@ pub async fn create_invitation(
     State(state): State<Arc<AppState>>,
     Path(space_id): Path<Uuid>,
 ) -> ApiResult<Json<InviteCodeResponse>> {
-    let owns_space = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM activity.spaces WHERE id = $1 AND created_by = $2 AND visibility = 'private' AND archived_at IS NULL)",
+    let can_invite = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM activity.spaces s WHERE s.id = $1 AND s.visibility = 'private' AND s.archived_at IS NULL AND (s.created_by = $2 OR EXISTS(SELECT 1 FROM activity.sessions sess WHERE sess.space_id = s.id AND sess.user_id = $2 AND sess.status IN ('active', 'grace') AND sess.expires_at > now())))",
     )
     .bind(space_id)
     .bind(user_id)
     .fetch_one(&state.pool)
     .await?;
-    if !owns_space {
+    if !can_invite {
         return Err(ApiError::Forbidden);
     }
 
@@ -754,7 +755,7 @@ fn validate_space_payload(payload: &CreateSpaceRequest) -> ApiResult<()> {
             "visibility must be public or private".to_string(),
         ));
     }
-    if payload.radius_meters > MAX_RADIUS_METERS
+    if !(MIN_RADIUS_METERS..=MAX_RADIUS_METERS).contains(&payload.radius_meters)
         || !geofence::valid_lat_lon(payload.latitude, payload.longitude)
     {
         return Err(ApiError::Validation("invalid geofence".to_string()));
@@ -807,7 +808,7 @@ mod tests {
 
     #[test]
     fn validates_radius_cap() {
-        let payload = CreateSpaceRequest {
+        let mut payload = CreateSpaceRequest {
             name: "Cafe".to_string(),
             description: "A quiet place nearby".to_string(),
             visibility: "public".to_string(),
@@ -816,6 +817,10 @@ mod tests {
             radius_meters: 301,
         };
         assert!(validate_space_payload(&payload).is_err());
+        payload.radius_meters = 29;
+        assert!(validate_space_payload(&payload).is_err());
+        payload.radius_meters = 30;
+        assert!(validate_space_payload(&payload).is_ok());
     }
 
     #[test]

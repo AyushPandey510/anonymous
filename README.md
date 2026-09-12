@@ -39,7 +39,7 @@ All via environment variables (see `apps/backend/.env.example`):
 ### Run
 
 ```bash
-cp apps/backend/.env.example .env
+cp .env.example .env
 docker compose up -d
 cd apps/backend
 sqlx migrate run
@@ -47,6 +47,123 @@ cargo run
 ```
 
 OpenAPI docs at `http://localhost:8080/docs`. Postgres published on host port `55432`. The Flutter app lives in `apps/frontend/`; from the repo root use the wrapper: `.\flutter-frontend.ps1 run -d chrome` (or run `flutter` directly from `apps/frontend/`).
+
+### Local + Production Gateway
+
+Docker Compose includes an nginx reverse proxy in front of the Rust backend. The setup is split so local development stays convenient while production looks like a real deployment.
+
+#### Local development
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+Then use:
+
+| URL | Purpose |
+|---|---|
+| `http://localhost/health` | Backend health through nginx |
+| `http://localhost/docs` | Swagger UI through nginx |
+| `http://localhost/api-docs/openapi.json` | OpenAPI JSON through nginx |
+| `ws://localhost/ws/spaces/{id}` | Chat WebSocket through nginx |
+
+Flutter should also use nginx locally:
+
+```bash
+cd apps/frontend
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost
+```
+
+For Android emulator:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2
+```
+
+For a physical phone on the same Wi-Fi:
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://YOUR_PC_IP
+```
+
+Local Compose also publishes these direct development ports:
+
+| URL | Purpose |
+|---|---|
+| `http://localhost:8080` | Direct backend access, useful while debugging |
+| `localhost:55432` | Direct Postgres access from local tools |
+
+This happens through `docker-compose.override.yml`, which Docker Compose loads automatically for local runs.
+
+#### Production deployment
+
+On a server, point your domain's DNS `A` record to the server IP first. Then create a production `.env`:
+
+```bash
+cp .env.production.example .env
+```
+
+Edit `.env` and set:
+
+| Variable | Production value |
+|---|---|
+| `SERVER_NAME` | Your API domain, for example `api.example.com` |
+| `POSTGRES_PASSWORD` | Strong database password |
+| `JWT_SECRET` | Long random secret |
+
+For the first certificate, start nginx in HTTP bootstrap mode:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.bootstrap.yml up -d --build
+```
+
+Request the Let's Encrypt certificate:
+
+```bash
+set -a
+. ./.env
+set +a
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile certbot run --rm certbot certonly --webroot --webroot-path /var/www/certbot --cert-name space-api -d "$SERVER_NAME" --email you@example.com --agree-tos --no-eff-email
+```
+
+Then switch to the HTTPS production config:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Production exposes only nginx on ports `80` and `443`; backend and Postgres stay inside the Docker network. The production nginx config uses the fixed certificate name `space-api`, so the same nginx file works for any domain.
+
+Renew certificates with:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile certbot run --rm certbot renew
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec nginx nginx -s reload
+```
+
+When building the Flutter app for people to use, point it at the public API:
+
+```bash
+flutter build apk --dart-define=API_BASE_URL=https://api.example.com
+```
+
+Ways nginx can help this project:
+
+| Use | How it applies here |
+|---|---|
+| Reverse proxy | Expose one public entrypoint while routing traffic to the Axum backend container. |
+| HTTPS/TLS termination | Serve `https://api.yourdomain.com` with Certbot or mounted certificates while the backend stays on internal HTTP. |
+| WebSocket proxying | Preserve `/ws/spaces/{id}` upgrades for real-time chat events. |
+| API gateway | Route `/auth`, `/spaces`, `/messages`, `/geofence`, `/docs`, and `/api-docs` consistently through one host. |
+| Static Flutter web hosting | Serve `apps/frontend/build/web` directly from nginx if you later publish the Flutter web app. |
+| Rate limiting | Add stricter limits for auth, refresh tokens, chat posting, reports, and geofence validation. |
+| Request size limits | Keep message/report payloads small with `client_max_body_size`. |
+| Security headers | Add browser-facing protections for docs or future web builds. |
+| Caching | Cache immutable Flutter web assets, icons, manifests, and map-related static assets. |
+| Compression | Enable gzip/Brotli for OpenAPI JSON and Flutter web files. |
+| Blue-green deploys | Route traffic between two backend versions during releases. |
+| Observability | Centralize access logs, latency, client IPs, and upstream error tracking. |
 
 ### Database Schema
 

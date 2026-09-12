@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 
 /// Locally rendered Three.js frames, with no network or WebView at startup.
 class OrbitAnimation extends StatelessWidget {
-  const OrbitAnimation({super.key, required this.size});
+  const OrbitAnimation({
+    super.key,
+    required this.size,
+    this.interactive = true,
+  });
 
   final double size;
+  final bool interactive;
 
   @override
   Widget build(BuildContext context) {

@@ -342,9 +342,9 @@ void main() {
     await tester.pump();
 
     await tester.longPress(find.text('react to me'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
     await tester.tap(find.text('👍'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
 
     expect(reactedEmoji, '👍');
 
@@ -436,9 +436,9 @@ void main() {
     await tester.pump();
 
     await tester.longPress(find.text('original message'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
     await tester.tap(find.text('Reply'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
 
     expect(find.textContaining('Replying to anon-2'), findsOneWidget);
 
@@ -461,13 +461,16 @@ void main() {
     var openCalled = false;
     String? openedId;
     final mock = MockClient((request) async {
+      if (request.url.path == '/me/spaces') {
+        return http.Response('[]', 200);
+      }
       if (request.url.path == '/me/joined-spaces') {
         return http.Response(
           jsonEncode([
             {
               'id': 'space-1',
               'name': 'Parivartan',
-              'visibility': 'public',
+              'visibility': 'private',
               'latitude': 12.97,
               'longitude': 77.59,
               'radius_meters': 100,
@@ -476,7 +479,7 @@ void main() {
             {
               'id': 'space-2',
               'name': 'MySpace',
-              'visibility': 'public',
+              'visibility': 'private',
               'latitude': 12.97,
               'longitude': 77.59,
               'radius_meters': 100,
@@ -539,7 +542,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('You are not in any Spaces'), findsOneWidget);
+    expect(find.text('No Spaces yet'), findsOneWidget);
   });
 
   testWidgets('Delete own message via long-press flow', (tester) async {
@@ -617,15 +620,15 @@ void main() {
     await tester.pump();
 
     await tester.longPress(find.text('my own message'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
     expect(find.text('Delete'), findsOneWidget);
 
     await tester.tap(find.text('Delete'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
     expect(find.text('Delete message?'), findsOneWidget);
 
     await tester.tap(find.text('Delete'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
 
     expect(deleteCalled, isTrue);
     expect(find.text('my own message'), findsNothing);
@@ -709,19 +712,24 @@ void main() {
     await tester.pump();
 
     await tester.longPress(find.text('offensive message'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
     expect(find.text('Report'), findsOneWidget);
     expect(find.text('Delete'), findsNothing);
 
     await tester.tap(find.text('Report'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
     expect(find.text('Report message'), findsOneWidget);
 
     await tester.tap(find.text('Spam'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
 
     expect(reportedReason, 'Spam');
     expect(find.text('Thanks, report submitted'), findsOneWidget);
     await incoming.close();
   });
+}
+
+Future<void> _pumpUi(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
 }

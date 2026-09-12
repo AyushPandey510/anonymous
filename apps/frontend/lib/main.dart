@@ -11,6 +11,7 @@ import 'package:space_mobile/features/location/domain/geo_point.dart';
 import 'package:space_mobile/features/location/domain/location_fix.dart';
 import 'package:space_mobile/features/location/presentation/interactive_geofence_map.dart';
 import 'package:space_mobile/features/location/presentation/location_selection_screen.dart';
+import 'package:space_mobile/features/location/presentation/orbit_animation.dart';
 import 'package:space_mobile/services/api_client.dart';
 import 'package:space_mobile/services/api_service.dart';
 import 'package:space_mobile/services/auth_service.dart';
@@ -23,6 +24,8 @@ void main() {
 }
 
 String get defaultApiBaseUrl => AppConfig.apiBaseUrl;
+const _discoveryHeaderOrbitSize = 104.0;
+const _mySpacesHeaderOrbitSize = 86.0;
 
 class SpaceApp extends StatefulWidget {
   const SpaceApp({super.key});
@@ -1817,23 +1820,32 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text.rich(
-                    TextSpan(
-                      text: '$_greeting\n',
-                      children: [
-                        TextSpan(
-                          text: 'Explorer.',
-                          style: TextStyle(color: colors.accent),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            text: '$_greeting\n',
+                            children: [
+                              TextSpan(
+                                text: 'Explorer.',
+                                style: TextStyle(color: colors.accent),
+                              ),
+                            ],
+                          ),
+                          style: TextStyle(
+                            fontFamily: 'Montserrat',
+                            fontSize: 32,
+                            height: 1.15,
+                            fontWeight: FontWeight.w800,
+                            color: colors.primaryText,
+                          ),
                         ),
-                      ],
-                    ),
-                    style: TextStyle(
-                      fontFamily: 'Montserrat',
-                      fontSize: 32,
-                      height: 1.15,
-                      fontWeight: FontWeight.w800,
-                      color: colors.primaryText,
-                    ),
+                      ),
+                      const SizedBox(width: 12),
+                      const OrbitAnimation(size: _discoveryHeaderOrbitSize),
+                    ],
                   ),
                   const SizedBox(height: 18),
                   _GlassChip(
@@ -2027,6 +2039,8 @@ class MySpacesScreen extends StatefulWidget {
 
 class _MySpacesScreenState extends State<MySpacesScreen> {
   List<SpaceData> _spaces = [];
+  Set<String> _ownedIds = {};
+  Set<String> _joinedIds = {};
   bool _loading = true;
   String? _error;
   String? _openingId;
@@ -2043,10 +2057,23 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
       _error = null;
     });
     try {
-      final spaces = await widget.api.joinedSpaces();
+      final lists = await Future.wait([
+        widget.api.mySpaces(),
+        widget.api.joinedSpaces(),
+      ]);
+      final owned = lists[0]
+          .where((space) => space.visibility == 'private')
+          .toList();
+      final joined = lists[1];
+      final spaces = <String, SpaceData>{
+        for (final space in owned) space.id: space,
+        for (final space in joined) space.id: space,
+      }.values.toList();
       if (!mounted) return;
       setState(() {
         _spaces = spaces;
+        _ownedIds = owned.map((space) => space.id).toSet();
+        _joinedIds = joined.map((space) => space.id).toSet();
         _loading = false;
       });
     } catch (e) {
@@ -2159,20 +2186,30 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'My Spaces',
-                    style: TextStyle(
-                      fontFamily: 'Montserrat',
-                      fontSize: 32,
-                      height: 1.15,
-                      fontWeight: FontWeight.w800,
-                      color: colors.primaryText,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'My Spaces',
+                          style: TextStyle(
+                            fontFamily: 'Montserrat',
+                            fontSize: 32,
+                            height: 1.15,
+                            fontWeight: FontWeight.w800,
+                            color: colors.primaryText,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const OrbitAnimation(size: _mySpacesHeaderOrbitSize),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   _GlassChip(
                     icon: Icons.layers_rounded,
-                    label: '${_spaces.length} active memberships',
+                    label:
+                        '${_ownedIds.length} created / ${_joinedIds.length} joined',
                     accent: colors.accent,
                   ),
                 ],
@@ -2210,8 +2247,8 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
               Expanded(
                 child: _EmptyState(
                   icon: Icons.layers_outlined,
-                  title: 'You are not in any Spaces',
-                  subtitle: 'Join one from the Discovery tab',
+                  title: 'No Spaces yet',
+                  subtitle: 'Join a space or create an invite-only space',
                   actionLabel: null,
                   onAction: null,
                 ),
@@ -2240,7 +2277,8 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                           name: space.name,
                           description: space.description,
                           memberCount: space.memberCount,
-                          joined: true,
+                          joined: _joinedIds.contains(space.id),
+                          owned: _ownedIds.contains(space.id),
                           loading: _openingId == space.id,
                           onInvite: space.visibility == 'private'
                               ? () => _showInviteCode(space)
@@ -2624,6 +2662,7 @@ class _SpaceCard extends StatelessWidget {
     this.distance = 0,
     this.memberCount = 0,
     this.joined = false,
+    this.owned = false,
     this.loading = false,
     this.onInvite,
     this.onTap,
@@ -2634,6 +2673,7 @@ class _SpaceCard extends StatelessWidget {
   final double distance;
   final int memberCount;
   final bool joined;
+  final bool owned;
   final bool loading;
   final VoidCallback? onInvite;
   final VoidCallback? onTap;
@@ -2681,26 +2721,13 @@ class _SpaceCard extends StatelessWidget {
                     ),
                     child: Icon(icon, color: colors.onAccent, size: 24),
                   ),
-                  if (onInvite != null) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 36,
-                      child: OutlinedButton.icon(
-                        onPressed: onInvite,
-                        icon: const Icon(Icons.vpn_key_rounded, size: 16),
-                        label: const Text('Invite Code'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: activeColor,
-                          side: BorderSide(
-                            color: activeColor.withValues(alpha: 0.55),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                      ),
+                  if (onInvite != null)
+                    IconButton(
+                      tooltip: 'Invite Code',
+                      onPressed: onInvite,
+                      icon: const Icon(Icons.vpn_key_rounded, size: 20),
+                      color: activeColor,
                     ),
-                  ],
                   const Spacer(),
                   if (loading)
                     SizedBox(
@@ -2716,7 +2743,11 @@ class _SpaceCard extends StatelessWidget {
                       icon: joined
                           ? Icons.check_circle_rounded
                           : Icons.radar_rounded,
-                      label: joined ? 'Joined' : _formatDistance(distance),
+                      label: owned
+                          ? 'Owner'
+                          : joined
+                          ? 'Joined'
+                          : _formatDistance(distance),
                       accent: activeColor,
                     ),
                 ],
@@ -2759,7 +2790,11 @@ class _SpaceCard extends StatelessWidget {
                   ),
                   _GlassChip(
                     icon: Icons.public_rounded,
-                    label: joined ? 'Open Channel' : 'Nearby',
+                    label: owned
+                        ? 'Your Space'
+                        : joined
+                        ? 'Open Channel'
+                        : 'Nearby',
                     accent: colors.secondaryText,
                   ),
                 ],
@@ -2782,7 +2817,7 @@ class _SpaceCard extends StatelessWidget {
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  joined ? 'Enter Space' : 'Join Sequence',
+                  joined || owned ? 'Enter Space' : 'Join Sequence',
                   style: TextStyle(
                     color: activeColor,
                     fontSize: 12,

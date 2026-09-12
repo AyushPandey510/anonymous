@@ -21,11 +21,11 @@ class AppConfig {
   // 🌐 SERVER ADDRESSES
   // ===========================================================================
 
-  /// 1. Android Emulator address (10.0.2.2 connects from Android emulator to PC host)
-  static const String emulatorUrl = 'http://10.0.2.2:8080';
+  /// 1. Android Emulator address (10.0.2.2 connects from Android emulator to PC host nginx)
+  static const String emulatorUrl = 'http://10.0.2.2';
 
-  /// 2. Physical Device address (Your PC's Wi-Fi IP from ipconfig)
-  static const String physicalDeviceUrl = 'http://192.168.1.7:8080';
+  /// 2. Physical Device address (Your PC's Wi-Fi IP from ipconfig, served by nginx)
+  static const String physicalDeviceUrl = 'http://192.168.1.7';
 
   /// 3. Production Live Backend address (HTTPS domain)
   static const String productionUrl = 'https://api.yourdomain.com';
@@ -51,10 +51,10 @@ class AppConfig {
       return physicalDeviceUrl;
     }
 
-    // 4. Emulator / Localhost mode (10.0.2.2 on Android emulator, localhost on desktop/web)
+    // 4. Emulator / Localhost mode (nginx in front of backend)
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return emulatorUrl;
     }
-    return 'http://localhost:8080';
+    return 'http://localhost';
   }
 }
