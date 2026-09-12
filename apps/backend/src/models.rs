@@ -33,6 +33,8 @@ pub struct Session {
 
 #[derive(Serialize, sqlx::FromRow, ToSchema)]
 pub struct Message {
+    #[sqlx(default)]
+    pub poll: Option<serde_json::Value>,
     pub id: Uuid,
     pub space_id: Uuid,
     pub anonymous_id: String,

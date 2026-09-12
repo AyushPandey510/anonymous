@@ -27,6 +27,29 @@ pub struct SendMessageRequest {
     #[validate(length(min = 1, max = 2000))]
     pub content: String,
     pub reply_to: Option<Uuid>,
+    pub poll_options: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct VoteRequest {
+    pub session_id: Uuid,
+    pub option_index: i32,
+}
+
+fn validate_poll_options(options: &[String]) -> ApiResult<()> {
+    let unique: std::collections::HashSet<_> =
+        options.iter().map(|s| s.trim().to_lowercase()).collect();
+    if !(2..=6).contains(&options.len())
+        || unique.len() != options.len()
+        || options
+            .iter()
+            .any(|s| s.trim().is_empty() || s.chars().count() > 100)
+    {
+        return Err(ApiError::Validation(
+            "Provide 2-6 distinct poll options, up to 100 characters each".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, ToSchema, Validate)]
@@ -51,6 +74,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/messages/:message_id/report", post(report_message))
         .route("/messages/:message_id/delete", post(delete_message))
         .route("/messages/:message_id/react", post(react_message))
+        .route("/messages/:message_id/vote", post(vote_poll))
         .route("/ws/spaces/:space_id", get(websocket))
 }
 
@@ -76,6 +100,11 @@ pub async fn list_messages(
         SELECT
             m.id, m.space_id, m.anonymous_id, m.content, m.reply_to, m.created_at,
             m.moderation_status::text,
+            CASE WHEN m.poll_options IS NOT NULL THEN json_build_object(
+                'options', m.poll_options,
+                'counts', (SELECT json_agg((SELECT count(*) FROM activity.poll_votes v WHERE v.message_id = m.id AND v.option_index = i)) FROM generate_series(0, jsonb_array_length(m.poll_options)-1) i),
+                'selected', (SELECT option_index FROM activity.poll_votes WHERE message_id = m.id AND user_id = $2)
+            ) END AS poll,
             r.content AS reply_content,
             COALESCE((
                 SELECT json_agg(json_build_object('emoji', agg.emoji, 'count', agg.cnt))
@@ -94,6 +123,7 @@ pub async fn list_messages(
         "#,
     )
     .bind(space_id)
+    .bind(user_id)
     .fetch_all(&state.pool)
     .await?;
 
@@ -112,6 +142,20 @@ pub async fn send_message(
         .map_err(|error| ApiError::Validation(error.to_string()))?;
     let anonymous_id =
         active_session_anonymous_id(&state, user_id, space_id, payload.session_id).await?;
+    if let Some(options) = &payload.poll_options {
+        validate_poll_options(options)?;
+        if payload.content.trim().is_empty() || payload.content.chars().count() > 280 {
+            return Err(ApiError::Validation(
+                "Poll question must be 1-280 characters".into(),
+            ));
+        }
+    }
+    let options = payload.poll_options.map(|items| {
+        items
+            .into_iter()
+            .map(|s| s.trim().to_owned())
+            .collect::<Vec<_>>()
+    });
     let reply_content = if let Some(reply_id) = payload.reply_to {
         Some(validate_reply_target(&state, space_id, reply_id).await?)
     } else {
@@ -120,8 +164,8 @@ pub async fn send_message(
 
     let mut message = sqlx::query_as::<_, Message>(
         r#"
-        INSERT INTO activity.messages (space_id, session_id, anonymous_id, content, reply_to)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO activity.messages (space_id, session_id, anonymous_id, content, reply_to, poll_options)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, space_id, anonymous_id, content, reply_to, created_at, moderation_status::text
         "#,
     )
@@ -130,16 +174,26 @@ pub async fn send_message(
     .bind(anonymous_id)
     .bind(payload.content)
     .bind(payload.reply_to)
+    .bind(options.as_ref().map(|items| serde_json::json!(items)))
     .fetch_one(&state.pool)
     .await?;
 
     message.reply_content = reply_content;
+    if let Some(options) = &options {
+        message.poll = Some(
+            serde_json::json!({"options": options, "counts": vec![0; options.len()], "selected": null}),
+        );
+    }
 
     let _ = state
         .moderation_tx
         .send(ModerationJob {
             message_id: message.id,
-            content: message.content.clone(),
+            content: format!(
+                "{} {}",
+                message.content,
+                options.unwrap_or_default().join(" ")
+            ),
         })
         .await;
 
@@ -149,6 +203,28 @@ pub async fn send_message(
     });
     let _ = state.broadcast_sender(space_id).send(event.to_string());
     Ok(Json(message))
+}
+
+#[utoipa::path(post, path = "/messages/{message_id}/vote", request_body = VoteRequest)]
+pub async fn vote_poll(
+    AuthUser { id: user_id }: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(message_id): Path<Uuid>,
+    Json(payload): Json<VoteRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let space_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT space_id FROM activity.messages WHERE id = $1 AND deleted_at IS NULL AND moderation_status <> 'hidden' AND poll_options IS NOT NULL"
+    ).bind(message_id).fetch_optional(&state.pool).await?.ok_or(ApiError::NotFound)?;
+    active_session_anonymous_id(&state, user_id, space_id, payload.session_id).await?;
+    let result = sqlx::query(
+        "INSERT INTO activity.poll_votes (message_id, user_id, option_index) SELECT id, $2, $3 FROM activity.messages WHERE id = $1 AND deleted_at IS NULL AND moderation_status <> 'hidden' AND $3 >= 0 AND $3 < jsonb_array_length(poll_options) ON CONFLICT (message_id, user_id) DO UPDATE SET option_index = EXCLUDED.option_index"
+    ).bind(message_id).bind(user_id).bind(payload.option_index).execute(&state.pool).await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::Validation("Invalid poll option".into()));
+    }
+    let event = serde_json::json!({"type": "poll_updated", "message_id": message_id});
+    let _ = state.broadcast_sender(space_id).send(event.to_string());
+    Ok(Json(event))
 }
 
 #[utoipa::path(post, path = "/messages/{message_id}/report", request_body = ReportMessageRequest)]
@@ -357,4 +433,26 @@ async fn validate_reply_target(
     .fetch_optional(&state.pool)
     .await?
     .ok_or(ApiError::NotFound)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn polls_require_distinct_nonempty_bounded_options() {
+        for options in [
+            vec!["Yes"],
+            vec!["Yes", " yes "],
+            vec!["Yes", " "],
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+        ] {
+            assert!(validate_poll_options(
+                &options.into_iter().map(String::from).collect::<Vec<_>>()
+            )
+            .is_err());
+        }
+        assert!(validate_poll_options(&["a".repeat(101), "No".into()]).is_err());
+        assert!(validate_poll_options(&["Yes".into(), "No".into()]).is_ok());
+    }
 }

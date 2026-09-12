@@ -25,8 +25,8 @@ const MAX_ACTIVE_SPACES_PER_LOCATION: usize = 10;
 pub struct CreateSpaceRequest {
     #[validate(length(min = 2, max = 80))]
     pub name: String,
-    #[validate(length(max = 280))]
-    pub description: Option<String>,
+    #[validate(length(min = 4, max = 280))]
+    pub description: String,
     pub visibility: String,
     pub latitude: f64,
     pub longitude: f64,
@@ -46,6 +46,33 @@ pub struct JoinSpaceRequest {
     pub longitude: f64,
     pub accuracy_meters: Option<f64>,
     pub invite_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct JoinByInviteRequest {
+    pub invite_code: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub accuracy_meters: Option<f64>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct CreateSpaceResponse {
+    #[serde(flatten)]
+    pub space: Space,
+    pub invite_code: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InviteCodeResponse {
+    pub invite_code: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct JoinByInviteResponse {
+    pub space: SpaceWithDistance,
+    pub session: Session,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -72,19 +99,21 @@ pub struct LeaveResponse {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/spaces", post(create_space))
+        .route("/spaces/join-by-code", post(join_space_by_invite))
         .route("/spaces/discover", get(discover_spaces))
+        .route("/spaces/:space_id/invitations", post(create_invitation))
         .route("/spaces/:space_id/join", post(join_space))
         .route("/spaces/:space_id/leave", post(leave_space))
         .route("/me/spaces", get(list_my_spaces))
         .route("/me/joined-spaces", get(list_joined_spaces))
 }
 
-#[utoipa::path(post, path = "/spaces", request_body = CreateSpaceRequest)]
+#[utoipa::path(post, path = "/spaces", request_body = CreateSpaceRequest, responses((status = 200, body = CreateSpaceResponse)))]
 pub async fn create_space(
     AuthUser { id: user_id }: AuthUser,
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateSpaceRequest>,
-) -> ApiResult<Json<Space>> {
+) -> ApiResult<Json<CreateSpaceResponse>> {
     payload
         .validate()
         .map_err(|error| ApiError::Validation(error.to_string()))?;
@@ -125,7 +154,7 @@ pub async fn create_space(
         "#,
     )
     .bind(&payload.name)
-    .bind(&payload.description)
+    .bind(payload.description.trim())
     .bind(&payload.visibility)
     .bind(payload.latitude)
     .bind(payload.longitude)
@@ -134,7 +163,17 @@ pub async fn create_space(
     .fetch_one(&state.pool)
     .await?;
 
-    Ok(Json(space))
+    let invite_code = if space.visibility == "private" {
+        Some(
+            create_invite_code(&state.pool, space.id, user_id)
+                .await?
+                .invite_code,
+        )
+    } else {
+        None
+    };
+
+    Ok(Json(CreateSpaceResponse { space, invite_code }))
 }
 
 #[utoipa::path(get, path = "/spaces/discover", params(DiscoverQuery))]
@@ -168,14 +207,21 @@ pub async fn discover_spaces(
             f64,
             i32,
             chrono::DateTime<chrono::Utc>,
-            i32,
+            i64,
         ),
     >(
         r#"
-        SELECT id, name, description, visibility::text, latitude, longitude, radius_meters, created_at, member_count
-        FROM activity.spaces
-        WHERE archived_at IS NULL AND visibility = 'public'
-        ORDER BY created_at DESC
+        SELECT
+            s.id, s.name, s.description, s.visibility::text, s.latitude, s.longitude,
+            s.radius_meters, s.created_at,
+            COUNT(DISTINCT sess.id) FILTER (
+                WHERE sess.status IN ('active', 'grace') AND sess.expires_at > now()
+            ) AS active_member_count
+        FROM activity.spaces s
+        LEFT JOIN activity.sessions sess ON sess.space_id = s.id
+        WHERE s.archived_at IS NULL AND s.visibility = 'public'
+        GROUP BY s.id
+        ORDER BY s.created_at DESC
         "#,
     )
     .fetch_all(&state.pool)
@@ -217,7 +263,7 @@ pub async fn discover_spaces(
                 radius_meters: space.6,
                 created_at: space.7,
                 distance_meters: (dist * 10.0).round() / 10.0,
-                member_count: space.8,
+                member_count: space.8 as i32,
                 joined,
             }
         })
@@ -247,27 +293,21 @@ pub async fn join_space(
         ));
     }
 
-    let space = sqlx::query_as::<_, (f64, f64, i32, String)>(
-        "SELECT latitude, longitude, radius_meters, visibility::text FROM activity.spaces WHERE id = $1 AND archived_at IS NULL",
+    let space = sqlx::query_as::<_, (f64, f64, i32, String, Uuid)>(
+        "SELECT latitude, longitude, radius_meters, visibility::text, created_by FROM activity.spaces WHERE id = $1 AND archived_at IS NULL",
     )
     .bind(space_id)
     .fetch_optional(&state.pool)
     .await?
     .ok_or(ApiError::NotFound)?;
 
-    if space.3 == "private" {
-        let invite_code = payload.invite_code.ok_or(ApiError::Forbidden)?;
-        let usable = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM activity.space_invitations WHERE space_id = $1 AND invite_code = $2 AND expires_at > now() AND (max_uses IS NULL OR uses < max_uses))",
-        )
-        .bind(space_id)
-        .bind(invite_code)
-        .fetch_one(&state.pool)
-        .await?;
-        if !usable {
-            return Err(ApiError::Forbidden);
-        }
-    }
+    let should_count_invite_use = if space.3 == "private" && space.4 != user_id {
+        let invite_code = payload.invite_code.as_deref().ok_or(ApiError::Forbidden)?;
+        ensure_invite_is_usable(&state.pool, space_id, &invite_code).await?;
+        true
+    } else {
+        false
+    };
 
     let existing = sqlx::query_as::<_, (Uuid, String, chrono::DateTime<chrono::Utc>)>(
         "SELECT id, anonymous_id, expires_at FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace') AND expires_at > now()",
@@ -334,7 +374,89 @@ pub async fn join_space(
         .execute(&state.pool)
         .await?;
 
+    if should_count_invite_use {
+        let invite_code = payload.invite_code.as_deref().ok_or(ApiError::Forbidden)?;
+        increment_invite_uses(&state.pool, space_id, invite_code).await?;
+    }
+
     Ok(Json(session))
+}
+
+#[utoipa::path(post, path = "/spaces/{space_id}/invitations", responses((status = 200, body = InviteCodeResponse)))]
+pub async fn create_invitation(
+    AuthUser { id: user_id }: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(space_id): Path<Uuid>,
+) -> ApiResult<Json<InviteCodeResponse>> {
+    let owns_space = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM activity.spaces WHERE id = $1 AND created_by = $2 AND visibility = 'private' AND archived_at IS NULL)",
+    )
+    .bind(space_id)
+    .bind(user_id)
+    .fetch_one(&state.pool)
+    .await?;
+    if !owns_space {
+        return Err(ApiError::Forbidden);
+    }
+
+    Ok(Json(
+        create_invite_code(&state.pool, space_id, user_id).await?,
+    ))
+}
+
+#[utoipa::path(post, path = "/spaces/join-by-code", request_body = JoinByInviteRequest, responses((status = 200, body = JoinByInviteResponse)))]
+pub async fn join_space_by_invite(
+    AuthUser { id: user_id }: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<JoinByInviteRequest>,
+) -> ApiResult<Json<JoinByInviteResponse>> {
+    let invite_code = normalize_invite_code(&payload.invite_code);
+    if invite_code.is_empty() {
+        return Err(ApiError::Validation("invite code is required".to_string()));
+    }
+
+    let space_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT i.space_id
+        FROM activity.space_invitations i
+        JOIN activity.spaces s ON s.id = i.space_id
+        WHERE i.invite_code = $1
+          AND i.expires_at > now()
+          AND (i.max_uses IS NULL OR i.uses < i.max_uses)
+          AND s.archived_at IS NULL
+          AND s.visibility = 'private'
+        "#,
+    )
+    .bind(&invite_code)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or(ApiError::Forbidden)?;
+
+    let session = join_space(
+        AuthUser { id: user_id },
+        State(state.clone()),
+        Path(space_id),
+        Json(JoinSpaceRequest {
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            accuracy_meters: payload.accuracy_meters,
+            invite_code: Some(invite_code),
+        }),
+    )
+    .await?
+    .0;
+
+    let space = space_summary(
+        &state.pool,
+        space_id,
+        user_id,
+        payload.latitude,
+        payload.longitude,
+    )
+    .await?
+    .ok_or(ApiError::NotFound)?;
+
+    Ok(Json(JoinByInviteResponse { space, session }))
 }
 
 #[utoipa::path(post, path = "/spaces/{space_id}/leave")]
@@ -368,41 +490,265 @@ pub async fn leave_space(
 pub async fn list_my_spaces(
     AuthUser { id: user_id }: AuthUser,
     State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<Vec<Space>>> {
-    let spaces = sqlx::query_as::<_, Space>(
+) -> ApiResult<Json<Vec<SpaceWithDistance>>> {
+    let spaces = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            f64,
+            f64,
+            i32,
+            chrono::DateTime<chrono::Utc>,
+            i64,
+        ),
+    >(
         r#"
-        SELECT id, name, description, visibility::text, latitude, longitude, radius_meters, created_at
-        FROM activity.spaces
-        WHERE created_by = $1 AND archived_at IS NULL
-        ORDER BY created_at DESC
+        SELECT
+            s.id, s.name, s.description, s.visibility::text, s.latitude, s.longitude,
+            s.radius_meters, s.created_at,
+            COUNT(DISTINCT sess.id) FILTER (
+                WHERE sess.status IN ('active', 'grace') AND sess.expires_at > now()
+            ) AS active_member_count
+        FROM activity.spaces s
+        LEFT JOIN activity.sessions sess ON sess.space_id = s.id
+        WHERE s.created_by = $1 AND s.archived_at IS NULL
+        GROUP BY s.id
+        ORDER BY s.created_at DESC
         "#,
     )
     .bind(user_id)
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(spaces))
+    Ok(Json(
+        spaces.into_iter().map(space_with_zero_distance).collect(),
+    ))
 }
 
 pub async fn list_joined_spaces(
     AuthUser { id: user_id }: AuthUser,
     State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<Vec<Space>>> {
-    let spaces = sqlx::query_as::<_, Space>(
+) -> ApiResult<Json<Vec<SpaceWithDistance>>> {
+    let spaces = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            f64,
+            f64,
+            i32,
+            chrono::DateTime<chrono::Utc>,
+            i64,
+        ),
+    >(
         r#"
-        SELECT s.id, s.name, s.description, s.visibility::text, s.latitude, s.longitude, s.radius_meters, s.created_at
+        SELECT
+            s.id, s.name, s.description, s.visibility::text, s.latitude, s.longitude,
+            s.radius_meters, s.created_at,
+            COUNT(DISTINCT active_sess.id) FILTER (
+                WHERE active_sess.status IN ('active', 'grace') AND active_sess.expires_at > now()
+            ) AS active_member_count
         FROM activity.spaces s
         JOIN activity.sessions sess ON sess.space_id = s.id
-        WHERE sess.user_id = $1 AND sess.status IN ('active', 'grace') AND sess.expires_at > now() AND s.archived_at IS NULL
+        LEFT JOIN activity.sessions active_sess ON active_sess.space_id = s.id
+        WHERE sess.user_id = $1
+          AND sess.status IN ('active', 'grace')
+          AND sess.expires_at > now()
+          AND s.archived_at IS NULL
+        GROUP BY s.id, sess.joined_at
         ORDER BY sess.joined_at DESC
         "#,
     )
     .bind(user_id)
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(spaces))
+    Ok(Json(
+        spaces.into_iter().map(space_with_zero_distance).collect(),
+    ))
+}
+
+fn space_with_zero_distance(
+    space: (
+        Uuid,
+        String,
+        Option<String>,
+        String,
+        f64,
+        f64,
+        i32,
+        chrono::DateTime<chrono::Utc>,
+        i64,
+    ),
+) -> SpaceWithDistance {
+    SpaceWithDistance {
+        id: space.0,
+        name: space.1,
+        description: space.2,
+        visibility: space.3,
+        latitude: space.4,
+        longitude: space.5,
+        radius_meters: space.6,
+        created_at: space.7,
+        distance_meters: 0.0,
+        member_count: space.8 as i32,
+        joined: true,
+    }
+}
+
+async fn space_summary(
+    pool: &sqlx::PgPool,
+    space_id: Uuid,
+    user_id: Uuid,
+    latitude: f64,
+    longitude: f64,
+) -> ApiResult<Option<SpaceWithDistance>> {
+    let space = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            f64,
+            f64,
+            i32,
+            chrono::DateTime<chrono::Utc>,
+            i64,
+        ),
+    >(
+        r#"
+        SELECT
+            s.id, s.name, s.description, s.visibility::text, s.latitude, s.longitude,
+            s.radius_meters, s.created_at,
+            COUNT(DISTINCT sess.id) FILTER (
+                WHERE sess.status IN ('active', 'grace') AND sess.expires_at > now()
+            ) AS active_member_count
+        FROM activity.spaces s
+        LEFT JOIN activity.sessions sess ON sess.space_id = s.id
+        WHERE s.id = $1 AND s.archived_at IS NULL
+        GROUP BY s.id
+        "#,
+    )
+    .bind(space_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let joined = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace') AND expires_at > now())",
+    )
+    .bind(user_id)
+    .bind(space_id)
+    .fetch_one(pool)
+    .await?;
+
+    let here = Point {
+        latitude,
+        longitude,
+    };
+
+    Ok(space.map(|space| {
+        let distance = geofence::distance_meters(
+            Point {
+                latitude: space.4,
+                longitude: space.5,
+            },
+            here,
+        );
+        SpaceWithDistance {
+            id: space.0,
+            name: space.1,
+            description: space.2,
+            visibility: space.3,
+            latitude: space.4,
+            longitude: space.5,
+            radius_meters: space.6,
+            created_at: space.7,
+            distance_meters: (distance * 10.0).round() / 10.0,
+            member_count: space.8 as i32,
+            joined,
+        }
+    }))
+}
+
+async fn create_invite_code(
+    pool: &sqlx::PgPool,
+    space_id: Uuid,
+    created_by: Uuid,
+) -> ApiResult<InviteCodeResponse> {
+    let expires_at = Utc::now() + Duration::days(7);
+    for _ in 0..5 {
+        let invite_code = random_invite_code();
+        let inserted = sqlx::query_as::<_, (String, chrono::DateTime<chrono::Utc>)>(
+            r#"
+            INSERT INTO activity.space_invitations (space_id, invite_code, expires_at, created_by)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (invite_code) DO NOTHING
+            RETURNING invite_code, expires_at
+            "#,
+        )
+        .bind(space_id)
+        .bind(&invite_code)
+        .bind(expires_at)
+        .bind(created_by)
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some((invite_code, expires_at)) = inserted {
+            return Ok(InviteCodeResponse {
+                invite_code,
+                expires_at,
+            });
+        }
+    }
+
+    Err(ApiError::Conflict(
+        "could not create a unique invite code".to_string(),
+    ))
+}
+
+async fn ensure_invite_is_usable(
+    pool: &sqlx::PgPool,
+    space_id: Uuid,
+    invite_code: &str,
+) -> ApiResult<()> {
+    let usable = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM activity.space_invitations WHERE space_id = $1 AND invite_code = $2 AND expires_at > now() AND (max_uses IS NULL OR uses < max_uses))",
+    )
+    .bind(space_id)
+    .bind(normalize_invite_code(invite_code))
+    .fetch_one(pool)
+    .await?;
+
+    if usable {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden)
+    }
+}
+
+async fn increment_invite_uses(
+    pool: &sqlx::PgPool,
+    space_id: Uuid,
+    invite_code: &str,
+) -> ApiResult<()> {
+    sqlx::query(
+        "UPDATE activity.space_invitations SET uses = uses + 1 WHERE space_id = $1 AND invite_code = $2",
+    )
+    .bind(space_id)
+    .bind(normalize_invite_code(invite_code))
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 fn validate_space_payload(payload: &CreateSpaceRequest) -> ApiResult<()> {
+    if payload.description.trim().is_empty() {
+        return Err(ApiError::Validation("description is required".to_string()));
+    }
     if !matches!(payload.visibility.as_str(), "public" | "private") {
         return Err(ApiError::Validation(
             "visibility must be public or private".to_string(),
@@ -437,6 +783,24 @@ fn random_anonymous_name() -> String {
     )
 }
 
+fn random_invite_code() -> String {
+    let mut rng = rand::thread_rng();
+    let raw: String = (&mut rng)
+        .sample_iter(&Alphanumeric)
+        .take(8)
+        .map(char::from)
+        .collect();
+    normalize_invite_code(&raw)
+}
+
+fn normalize_invite_code(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,11 +809,24 @@ mod tests {
     fn validates_radius_cap() {
         let payload = CreateSpaceRequest {
             name: "Cafe".to_string(),
-            description: None,
+            description: "A quiet place nearby".to_string(),
             visibility: "public".to_string(),
             latitude: 1.0,
             longitude: 1.0,
             radius_meters: 301,
+        };
+        assert!(validate_space_payload(&payload).is_err());
+    }
+
+    #[test]
+    fn requires_description() {
+        let payload = CreateSpaceRequest {
+            name: "Cafe".to_string(),
+            description: "   ".to_string(),
+            visibility: "public".to_string(),
+            latitude: 1.0,
+            longitude: 1.0,
+            radius_meters: 120,
         };
         assert!(validate_space_payload(&payload).is_err());
     }

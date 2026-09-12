@@ -133,11 +133,7 @@ fn resolve_lifecycle_state<'a>(
     fallback: &'a str,
 ) -> &'a str {
     match session {
-        Some((status, expires))
-            if status == "expired" || (status == "grace" && *expires <= Utc::now()) =>
-        {
-            "expired"
-        }
+        Some((status, expires)) if status == "expired" || *expires <= Utc::now() => "expired",
         _ => fallback,
     }
 }
@@ -163,6 +159,7 @@ async fn update_session_from_validation(
                     last_validated_at = now(),
                     consecutive_outside = consecutive_outside + 1
                 WHERE user_id = $1 AND space_id = $2 AND status = 'active'
+                  AND expires_at > now()
                 "#,
             )
             .bind(user_id)
@@ -182,6 +179,7 @@ async fn update_session_from_validation(
                     last_validated_at = now(),
                     consecutive_outside = 0
                 WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace')
+                  AND expires_at > now()
                 "#,
             )
             .bind(user_id)
@@ -243,6 +241,14 @@ mod tests {
     fn expired_session_resolves_to_expired() {
         assert_eq!(
             resolve_lifecycle_state(Some(&session("expired", 0)), "inside"),
+            "expired"
+        );
+    }
+
+    #[test]
+    fn active_session_past_expiry_resolves_to_expired() {
+        assert_eq!(
+            resolve_lifecycle_state(Some(&session("active", -1)), "inside"),
             "expired"
         );
     }
