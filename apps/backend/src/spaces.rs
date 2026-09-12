@@ -311,7 +311,7 @@ pub async fn join_space(
     };
 
     let existing = sqlx::query_as::<_, (Uuid, String, chrono::DateTime<chrono::Utc>)>(
-        "SELECT id, anonymous_id, expires_at FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace') AND expires_at > now()",
+        "SELECT id, anonymous_id, expires_at FROM activity.sessions WHERE user_id = $1 AND space_id = $2 AND status IN ('active', 'grace')",
     )
     .bind(user_id)
     .bind(space_id)
@@ -356,11 +356,34 @@ pub async fn join_space(
 
     let anonymous_id = random_anonymous_name();
     let expires_at = Utc::now() + session_ttl;
-    let session = sqlx::query_as::<_, Session>(
+    let session_row = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            chrono::DateTime<chrono::Utc>,
+            String,
+            bool,
+        ),
+    >(
         r#"
         INSERT INTO activity.sessions (user_id, space_id, anonymous_id, expires_at, status, lifecycle_state)
         VALUES ($1, $2, $3, $4, 'active', 'inside')
-        RETURNING id, space_id, anonymous_id, expires_at, status::text
+        ON CONFLICT (user_id, space_id) WHERE status IN ('active', 'grace')
+        DO UPDATE SET
+            status = 'active',
+            lifecycle_state = 'inside',
+            consecutive_outside = 0,
+            last_validated_at = now(),
+            expires_at = EXCLUDED.expires_at
+        RETURNING
+            id,
+            space_id,
+            anonymous_id,
+            expires_at,
+            status::text,
+            (xmax = 0) AS inserted
         "#,
     )
     .bind(user_id)
@@ -369,11 +392,21 @@ pub async fn join_space(
     .bind(expires_at)
     .fetch_one(&state.pool)
     .await?;
+    let inserted = session_row.5;
+    let session = Session {
+        id: session_row.0,
+        space_id: session_row.1,
+        anonymous_id: session_row.2,
+        expires_at: session_row.3,
+        status: session_row.4,
+    };
 
-    sqlx::query("UPDATE activity.spaces SET member_count = member_count + 1 WHERE id = $1")
-        .bind(space_id)
-        .execute(&state.pool)
-        .await?;
+    if inserted {
+        sqlx::query("UPDATE activity.spaces SET member_count = member_count + 1 WHERE id = $1")
+            .bind(space_id)
+            .execute(&state.pool)
+            .await?;
+    }
 
     if should_count_invite_use {
         let invite_code = payload.invite_code.as_deref().ok_or(ApiError::Forbidden)?;

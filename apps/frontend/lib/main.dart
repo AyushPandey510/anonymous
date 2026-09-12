@@ -346,6 +346,7 @@ class _SpaceShellState extends State<SpaceShell> {
           : MySpacesScreen(
               api: widget.api,
               onOpenSpace: _onJoinSpace,
+              onLeaveActiveSpace: _onLeaveJoinedSpace,
               onToggleTheme: widget.onToggleTheme,
               isDark: widget.isDark,
             ),
@@ -572,6 +573,18 @@ class _SpaceShellState extends State<SpaceShell> {
       _sessionId = null;
       _screen = AppScreen.discovery;
     });
+  }
+
+  Future<void> _onLeaveJoinedSpace(String spaceId) async {
+    if (_activeSpace?.id == spaceId) {
+      _geofenceTimer?.cancel();
+      setState(() {
+        _activeSpace = null;
+        _anonymousName = null;
+        _sessionId = null;
+        _screen = AppScreen.discovery;
+      });
+    }
   }
 }
 
@@ -1689,6 +1702,7 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
   bool _loading = true;
   String? _error;
   String? _joiningId;
+  bool _joiningInvite = false;
 
   @override
   void initState() {
@@ -1734,8 +1748,8 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
     if (_joiningId != null) return;
     setState(() => _joiningId = data.id);
     final ok = await widget.onJoinSpace(_toSpace(data));
-    if (mounted) setState(() => _joiningId = null);
-    if (ok && mounted) _discover();
+    if (!mounted || ok) return;
+    setState(() => _joiningId = null);
   }
 
   Future<void> _showInviteJoinDialog() async {
@@ -1768,7 +1782,10 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
             ),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () {
+              FocusScope.of(context).unfocus();
+              Navigator.of(context).pop(controller.text.trim());
+            },
             style: FilledButton.styleFrom(
               backgroundColor: colors.accent,
               foregroundColor: colors.onAccent,
@@ -1778,10 +1795,69 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
         ],
       ),
     );
+    if (!mounted) {
+      controller.dispose();
+      return;
+    }
+
+    final inviteCode = code?.trim() ?? '';
+    if (inviteCode.isEmpty) {
+      controller.dispose();
+      return;
+    }
+
+    setState(() => _joiningInvite = true);
+    await WidgetsBinding.instance.endOfFrame;
+    await Future<void>.delayed(const Duration(milliseconds: 120));
     controller.dispose();
-    if (code == null || code.trim().isEmpty || !mounted) return;
-    final ok = await widget.onJoinInvite(code);
-    if (ok && mounted) _discover();
+    if (!mounted) return;
+
+    final ok = await widget.onJoinInvite(inviteCode);
+    if (!mounted || ok) return;
+
+    setState(() => _joiningInvite = false);
+    _discover();
+  }
+
+  Widget _buildInviteJoinLoader(SpaceColors colors) {
+    return SpaceScaffold(
+      child: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: CircularProgressIndicator(
+                  color: colors.accent,
+                  strokeWidth: 3,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'Joining Space',
+                style: SpaceTypography.headingMedium(color: colors.primaryText),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Opening your group...',
+                style: SpaceTypography.bodyMedium(color: colors.secondaryText),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant SpaceDiscoveryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.latitude != widget.latitude ||
+        oldWidget.longitude != widget.longitude) {
+      _joiningInvite = false;
+    }
   }
 
   String get _greeting {
@@ -1800,6 +1876,10 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+
+    if (_joiningInvite) {
+      return _buildInviteJoinLoader(colors);
+    }
 
     return SpaceScaffold(
       child: SafeArea(
@@ -2024,12 +2104,14 @@ class MySpacesScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.onOpenSpace,
+    this.onLeaveActiveSpace,
     this.onToggleTheme,
     this.isDark = true,
   });
 
   final ApiService api;
   final Future<bool> Function(Space) onOpenSpace;
+  final Future<void> Function(String spaceId)? onLeaveActiveSpace;
   final VoidCallback? onToggleTheme;
   final bool isDark;
 
@@ -2044,6 +2126,7 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
   bool _loading = true;
   String? _error;
   String? _openingId;
+  String? _leavingId;
 
   @override
   void initState() {
@@ -2099,8 +2182,67 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
     if (_openingId != null) return;
     setState(() => _openingId = data.id);
     final ok = await widget.onOpenSpace(_toSpace(data));
-    if (mounted) setState(() => _openingId = null);
-    if (ok && mounted) _load();
+    if (!mounted || ok) return;
+    setState(() => _openingId = null);
+  }
+
+  Future<void> _leave(SpaceData data) async {
+    if (_leavingId != null || !_joinedIds.contains(data.id)) return;
+    final colors = SpaceColors.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: colors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'Leave Space?',
+          style: SpaceTypography.headingMedium(color: colors.primaryText),
+        ),
+        content: Text(
+          'You can join again later if you have access.',
+          style: SpaceTypography.bodyMedium(color: colors.secondaryText),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.secondaryText),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.danger,
+              foregroundColor: colors.onAccent,
+            ),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _leavingId = data.id);
+    try {
+      await widget.api.leaveSpace(data.id);
+      await widget.onLeaveActiveSpace?.call(data.id);
+      if (!mounted) return;
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not leave: ${e.toString()}',
+            style: SpaceTypography.bodyMedium(color: colors.primaryText),
+          ),
+          backgroundColor: colors.surface2,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _leavingId = null);
+    }
   }
 
   Future<void> _showInviteCode(SpaceData data) async {
@@ -2279,11 +2421,17 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                           memberCount: space.memberCount,
                           joined: _joinedIds.contains(space.id),
                           owned: _ownedIds.contains(space.id),
-                          loading: _openingId == space.id,
+                          loading:
+                              _openingId == space.id || _leavingId == space.id,
                           onInvite: space.visibility == 'private'
                               ? () => _showInviteCode(space)
                               : null,
-                          onTap: _openingId == null ? () => _open(space) : null,
+                          onLeave: _joinedIds.contains(space.id)
+                              ? () => _leave(space)
+                              : null,
+                          onTap: _openingId == null && _leavingId == null
+                              ? () => _open(space)
+                              : null,
                         );
                       },
                     );
@@ -2665,6 +2813,7 @@ class _SpaceCard extends StatelessWidget {
     this.owned = false,
     this.loading = false,
     this.onInvite,
+    this.onLeave,
     this.onTap,
   });
 
@@ -2676,6 +2825,7 @@ class _SpaceCard extends StatelessWidget {
   final bool owned;
   final bool loading;
   final VoidCallback? onInvite;
+  final VoidCallback? onLeave;
   final VoidCallback? onTap;
 
   @override
@@ -2727,6 +2877,13 @@ class _SpaceCard extends StatelessWidget {
                       onPressed: onInvite,
                       icon: const Icon(Icons.vpn_key_rounded, size: 20),
                       color: activeColor,
+                    ),
+                  if (onLeave != null)
+                    IconButton(
+                      tooltip: 'Leave Space',
+                      onPressed: onLeave,
+                      icon: const Icon(Icons.logout_rounded, size: 20),
+                      color: colors.danger,
                     ),
                   const Spacer(),
                   if (loading)
