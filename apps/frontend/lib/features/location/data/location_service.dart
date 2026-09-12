@@ -65,6 +65,12 @@ class SpaceLocationService {
     };
   }
 
+  Stream<SpaceLocationPermissionState> permissionStateChanges() {
+    return Geolocator.getServiceStatusStream().asyncMap(
+      (_) => permissionState(),
+    );
+  }
+
   Future<void> openLocationSettings() {
     return Geolocator.openLocationSettings();
   }

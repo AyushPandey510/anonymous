@@ -12,17 +12,19 @@ class _PendingRequest {
 class ApiClient {
   final String baseUrl;
   final http.Client _client;
+  Future<void> Function(String accessToken, String refreshToken)?
+  onTokensChanged;
   String? accessToken;
   String? refreshToken;
   _PendingRequest? _lastRequest;
 
   ApiClient(this.baseUrl, {http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
-      };
+    'Content-Type': 'application/json',
+    if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+  };
 
   Future<Map<String, dynamic>> get(String path) async {
     final response = await _send('GET', path, null);
@@ -51,7 +53,7 @@ class ApiClient {
     var response = await _do(method, path, body);
 
     if (response.statusCode == 401 && refreshToken != null) {
-      if (await _tryRefresh() && _lastRequest != null) {
+      if (await refreshSession() && _lastRequest != null) {
         final req = _lastRequest!;
         response = await _do(req.method, req.path, req.body);
       }
@@ -74,10 +76,10 @@ class ApiClient {
       final response = await (switch (method) {
         'GET' => _client.get(uri, headers: _headers),
         'POST' => _client.post(
-            uri,
-            headers: _headers,
-            body: body != null ? jsonEncode(body) : null,
-          ),
+          uri,
+          headers: _headers,
+          body: body != null ? jsonEncode(body) : null,
+        ),
         _ => throw ArgumentError('Unsupported method: $method'),
       }).timeout(const Duration(seconds: 10));
 
@@ -89,18 +91,25 @@ class ApiClient {
     }
   }
 
-  Future<bool> _tryRefresh() async {
+  Future<bool> refreshSession() async {
     if (refreshToken == null) return false;
     try {
-      final response = await _client.post(
-        Uri.parse('$baseUrl/auth/refresh'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh_token': refreshToken}),
-      ).timeout(const Duration(seconds: 8));
+      final response = await _client
+          .post(
+            Uri.parse('$baseUrl/auth/refresh'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': refreshToken}),
+          )
+          .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         accessToken = data['access_token'] as String;
         refreshToken = data['refresh_token'] as String;
+        final updatedAccessToken = accessToken;
+        final updatedRefreshToken = refreshToken;
+        if (updatedAccessToken != null && updatedRefreshToken != null) {
+          await onTokensChanged?.call(updatedAccessToken, updatedRefreshToken);
+        }
         return true;
       }
     } catch (_) {}

@@ -97,6 +97,7 @@ void main() {
             await api.joinSpace(space.id, latitude: 12.97, longitude: 77.59);
             return true;
           },
+          onJoinInvite: (_) async => true,
           onCreateSpace: () {},
           onChangeLocation: () {},
           onLogout: () {},
@@ -163,6 +164,7 @@ void main() {
           latitude: 12.97,
           longitude: 77.59,
           onJoinSpace: (_) async => true,
+          onJoinInvite: (_) async => true,
           onCreateSpace: () {},
           onChangeLocation: () {},
           onLogout: () {},

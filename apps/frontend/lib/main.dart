@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:space_mobile/features/location/data/location_service.dart';
 import 'package:space_mobile/features/location/domain/geofence.dart';
@@ -104,7 +105,9 @@ class _AppLoaderState extends State<AppLoader> {
         setState(() => _ready = true);
       } else {
         final reason = _auth.lastError ?? 'Connection refused';
-        debugPrint('[Space App] ❌ Authentication failed for $_baseUrl: $reason');
+        debugPrint(
+          '[Space App] ❌ Authentication failed for $_baseUrl: $reason',
+        );
         setState(() {
           _error = 'Could not connect to server at $_baseUrl\n\n$reason';
         });
@@ -148,7 +151,10 @@ class _AppLoaderState extends State<AppLoader> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
                   ),
                 ),
               ],
@@ -245,8 +251,7 @@ class _SpaceShellState extends State<SpaceShell> {
 
       if (!mounted) return;
 
-      if (result.lifecycleState == 'outside' ||
-          result.lifecycleState == 'expired') {
+      if (!result.canParticipate) {
         _geofenceTimer?.cancel();
         _showExitDialog();
       }
@@ -328,6 +333,7 @@ class _SpaceShellState extends State<SpaceShell> {
               latitude: _userLocation!.latitude,
               longitude: _userLocation!.longitude,
               onJoinSpace: _onJoinSpace,
+              onJoinInvite: _onJoinInvite,
               onCreateSpace: _onCreateSpace,
               onChangeLocation: _onChangeLocation,
               onLogout: _onLogout,
@@ -444,7 +450,62 @@ class _SpaceShellState extends State<SpaceShell> {
             : 'Could not join: ${e.toString()}';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(message, style: SpaceTypography.bodyMedium(color: colors.primaryText)),
+            content: Text(
+              message,
+              style: SpaceTypography.bodyMedium(color: colors.primaryText),
+            ),
+            backgroundColor: colors.surface2,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  Future<bool> _onJoinInvite(String inviteCode) async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      final joined = await widget.api.joinSpaceByInvite(
+        inviteCode: inviteCode,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracyMeters: position.accuracy,
+      );
+
+      setState(() {
+        _activeSpace = Space(
+          id: joined.space.id,
+          name: joined.space.name,
+          visibility: joined.space.visibility,
+          latitude: joined.space.latitude,
+          longitude: joined.space.longitude,
+          radiusMeters: joined.space.radiusMeters,
+          createdAt: DateTime.parse(joined.space.createdAt),
+        );
+        _anonymousName = joined.session.anonymousId;
+        _sessionId = joined.session.id;
+        _screen = AppScreen.chat;
+      });
+
+      _startGeofenceMonitoring();
+      return true;
+    } catch (e) {
+      if (mounted) {
+        final colors = SpaceColors.of(context);
+        final message = e is ApiException && e.statusCode == 403
+            ? 'Invalid invite or you are outside the space area'
+            : 'Could not join invite: ${e.toString()}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              message,
+              style: SpaceTypography.bodyMedium(color: colors.primaryText),
+            ),
             backgroundColor: colors.surface2,
           ),
         );
@@ -558,34 +619,53 @@ class CreateSpaceScreen extends StatefulWidget {
   State<CreateSpaceScreen> createState() => _CreateSpaceScreenState();
 }
 
-class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
+class _CreateSpaceScreenState extends State<CreateSpaceScreen>
+    with WidgetsBindingObserver {
   final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
   final _locationService = const SpaceLocationService();
   final _validator = const GeofenceValidator();
   bool _isPrivate = false;
   double _radius = 120;
   late GeoPoint _selectedPoint;
   double _accuracy = 18;
-  bool _locating = true;
+  bool _locating = false;
   bool _hasDeviceFix = false;
   bool _creating = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedPoint = widget.initialLocation;
     _refreshDeviceLocation();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _nameController.dispose();
+    _descriptionController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && !_hasDeviceFix) {
+      _refreshDeviceLocation();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final canCreate =
+        !_creating &&
+        !_locating &&
+        _hasDeviceFix &&
+        _nameController.text.trim().length >= 2 &&
+        _descriptionController.text.trim().length >= 4;
     final geofence = CircleGeofence(
       center: _selectedPoint,
       radiusMeters: _radius.round(),
@@ -641,7 +721,23 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
                 StepCard(
                   step: '1. Identity',
                   title: 'Space Name',
-                  child: SpaceTextField(controller: _nameController),
+                  child: SpaceTextField(
+                    controller: _nameController,
+                    hintText: 'Space Circle',
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                StepCard(
+                  step: 'Description',
+                  title: 'Short Description',
+                  child: SpaceTextField(
+                    controller: _descriptionController,
+                    hintText: 'A quiet hub for nearby people.',
+                    maxLines: 3,
+                    maxLength: 280,
+                    onChanged: (_) => setState(() {}),
+                  ),
                 ),
                 const SizedBox(height: 18),
                 StepCard(
@@ -691,7 +787,9 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
                       IconButton(
                         onPressed: widget.onToggleTheme,
                         icon: Icon(
-                          widget.isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                          widget.isDark
+                              ? Icons.light_mode_rounded
+                              : Icons.dark_mode_rounded,
                           color: colors.secondaryText,
                           size: 20,
                         ),
@@ -711,6 +809,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
                         validation: validation,
                         allowPointSelection: false,
                         showSearch: false,
+                        autoLocate: false,
                         onPointChanged: (point) {
                           setState(() => _selectedPoint = point);
                         },
@@ -792,9 +891,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
                     : 'Initialize Space',
                 icon: Icons.rocket_launch_rounded,
                 loading: _creating || _locating,
-                onPressed: _creating || _locating || !_hasDeviceFix
-                    ? null
-                    : _createSpace,
+                onPressed: canCreate ? _createSpace : null,
               ),
             ),
           ],
@@ -804,6 +901,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
   }
 
   Future<void> _refreshDeviceLocation() async {
+    if (_locating) return;
     setState(() => _locating = true);
     try {
       final fix = await _locationService.currentFix();
@@ -842,9 +940,8 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
         _hasDeviceFix = true;
       });
       final response = await widget.api.createSpace(
-        name: _nameController.text.trim().isEmpty
-            ? 'Untitled Space'
-            : _nameController.text.trim(),
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim(),
         visibility: _isPrivate ? 'private' : 'public',
         latitude: fix.point.latitude,
         longitude: fix.point.longitude,
@@ -852,15 +949,20 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
       );
 
       if (!mounted) return;
+      if (_isPrivate && response.inviteCode != null) {
+        await _showCreatedInviteCode(response.inviteCode!);
+        if (!mounted) return;
+      }
+
       widget.onCreated(
         Space(
-          id: response['id'] as String,
-          name: response['name'] as String,
-          visibility: response['visibility'] as String,
-          latitude: (response['latitude'] as num).toDouble(),
-          longitude: (response['longitude'] as num).toDouble(),
-          radiusMeters: response['radius_meters'] as int,
-          createdAt: DateTime.parse(response['created_at'] as String),
+          id: response.space.id,
+          name: response.space.name,
+          visibility: response.space.visibility,
+          latitude: response.space.latitude,
+          longitude: response.space.longitude,
+          radiusMeters: response.space.radiusMeters,
+          createdAt: DateTime.parse(response.space.createdAt),
         ),
       );
     } catch (e) {
@@ -878,6 +980,48 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen> {
     } finally {
       if (mounted) setState(() => _creating = false);
     }
+  }
+
+  Future<void> _showCreatedInviteCode(String inviteCode) async {
+    final colors = SpaceColors.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: colors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'Invite Code',
+          style: SpaceTypography.headingMedium(color: colors.primaryText),
+        ),
+        content: SelectableText(
+          inviteCode,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: colors.accent,
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 2,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: inviteCode));
+              if (context.mounted) Navigator.of(context).pop();
+            },
+            child: Text('Copy', style: TextStyle(color: colors.accent)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.accent,
+              foregroundColor: colors.onAccent,
+            ),
+            child: const Text('Enter Space'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -943,6 +1087,8 @@ class ChatScreenState extends State<ChatScreen> {
 
   void _onWsEvent(WsEvent event) {
     switch (event) {
+      case WsPollUpdatedEvent():
+        _loadMessages();
       case WsMessageEvent(:final message):
         _onIncomingMessage(message);
       case WsReactionEvent(:final messageId, :final emoji, :final count):
@@ -960,6 +1106,7 @@ class ChatScreenState extends State<ChatScreen> {
           id: message.id,
           name: message.anonymousId,
           text: message.content,
+          poll: message.poll,
           replyTo: message.replyTo,
           replyText: message.replyContent,
           createdAt: DateTime.tryParse(message.createdAt),
@@ -996,6 +1143,7 @@ class ChatScreenState extends State<ChatScreen> {
                 id: m.id,
                 name: m.anonymousId,
                 text: m.content,
+                poll: m.poll,
                 replyTo: m.replyTo,
                 replyText: m.replyContent,
                 createdAt: DateTime.tryParse(m.createdAt),
@@ -1006,6 +1154,22 @@ class ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             );
+          } else {
+            final index = _messages.indexWhere((message) => message.id == m.id);
+            if (index >= 0) {
+              final old = _messages[index];
+              _messages[index] = ChatMessage(
+                id: old.id,
+                name: old.name,
+                text: old.text,
+                color: old.color,
+                reactions: old.reactions,
+                replyTo: old.replyTo,
+                replyText: old.replyText,
+                createdAt: old.createdAt,
+                poll: m.poll,
+              );
+            }
           }
         }
         _loadingMessages = false;
@@ -1037,6 +1201,56 @@ class ChatScreenState extends State<ChatScreen> {
 
   void _startReply(ChatMessage message) {
     setState(() => _replyingTo = message);
+  }
+
+  final _pendingVotes = <String>{};
+
+  Future<void> _votePoll(ChatMessage message, int option) async {
+    if (!_pendingVotes.add(message.id)) return;
+    setState(() {});
+    try {
+      await widget.api.votePoll(message.id, widget.sessionId, option);
+      await _loadMessages();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not submit vote. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      _pendingVotes.remove(message.id);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _showChatOptions() async {
+    final create = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListTile(
+          leading: const Icon(Icons.poll_outlined),
+          title: const Text('Create poll'),
+          onTap: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (create != true || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => PollComposerDialog(
+        onCreate: (question, options) async {
+          final saved = await widget.api.sendMessage(
+            widget.space.id,
+            widget.sessionId,
+            question,
+            pollOptions: options,
+          );
+          _onIncomingMessage(saved);
+        },
+      ),
+    );
   }
 
   Future<void> _addReaction(ChatMessage message, String emoji) async {
@@ -1234,7 +1448,10 @@ class ChatScreenState extends State<ChatScreen> {
               },
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(reason, style: SpaceTypography.bodyLarge(color: colors.primaryText)),
+                child: Text(
+                  reason,
+                  style: SpaceTypography.bodyLarge(color: colors.primaryText),
+                ),
               ),
             ),
         ],
@@ -1411,6 +1628,9 @@ class ChatScreenState extends State<ChatScreen> {
                           message: message,
                           isMine: message.name == widget.anonymousName,
                           onLongPress: () => _showMessageActions(message),
+                          onVote: _pendingVotes.contains(message.id)
+                              ? null
+                              : (option) => _votePoll(message, option),
                         );
                       },
                     ),
@@ -1418,6 +1638,7 @@ class ChatScreenState extends State<ChatScreen> {
             ChatComposer(
               controller: _controller,
               onSend: _sendMessage,
+              onAdd: _showChatOptions,
               replyingTo: _replyingTo,
               spaceName: widget.space.name,
               onCancelReply: () => setState(() => _replyingTo = null),
@@ -1437,6 +1658,7 @@ class SpaceDiscoveryScreen extends StatefulWidget {
     required this.latitude,
     required this.longitude,
     required this.onJoinSpace,
+    required this.onJoinInvite,
     required this.onCreateSpace,
     required this.onChangeLocation,
     required this.onLogout,
@@ -1448,6 +1670,7 @@ class SpaceDiscoveryScreen extends StatefulWidget {
   final double latitude;
   final double longitude;
   final Future<bool> Function(Space) onJoinSpace;
+  final Future<bool> Function(String inviteCode) onJoinInvite;
   final VoidCallback onCreateSpace;
   final VoidCallback onChangeLocation;
   final VoidCallback onLogout;
@@ -1512,6 +1735,52 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
     if (ok && mounted) _discover();
   }
 
+  Future<void> _showInviteJoinDialog() async {
+    final controller = TextEditingController();
+    final colors = SpaceColors.of(context);
+    final code = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: colors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'Join with Invite',
+          style: SpaceTypography.headingMedium(color: colors.primaryText),
+        ),
+        content: TextField(
+          controller: controller,
+          textCapitalization: TextCapitalization.characters,
+          style: SpaceTypography.bodyLarge(color: colors.primaryText),
+          decoration: InputDecoration(
+            hintText: 'ABCD1234',
+            hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.secondaryText),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.accent,
+              foregroundColor: colors.onAccent,
+            ),
+            child: const Text('Join'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (code == null || code.trim().isEmpty || !mounted) return;
+    final ok = await widget.onJoinInvite(code);
+    if (ok && mounted) _discover();
+  }
+
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour >= 5 && hour < 12) {
@@ -1573,6 +1842,15 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                         '${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(4)}',
                     accent: colors.accent,
                   ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _SpaceButton(
+                      label: 'Join with Invite',
+                      icon: Icons.vpn_key_rounded,
+                      onPressed: _showInviteJoinDialog,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1602,7 +1880,8 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                         Text(
                           'Unable to load nearby spaces',
                           style: SpaceTypography.headingSmall(
-                              color: colors.primaryText),
+                            color: colors.primaryText,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -1797,6 +2076,66 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
     if (ok && mounted) _load();
   }
 
+  Future<void> _showInviteCode(SpaceData data) async {
+    try {
+      final inviteCode = await widget.api.createInviteCode(data.id);
+      if (!mounted) return;
+      final colors = SpaceColors.of(context);
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: colors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            'Invite Code',
+            style: SpaceTypography.headingMedium(color: colors.primaryText),
+          ),
+          content: SelectableText(
+            inviteCode,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: colors.accent,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: inviteCode));
+                if (context.mounted) Navigator.of(context).pop();
+              },
+              child: Text('Copy', style: TextStyle(color: colors.accent)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.accent,
+                foregroundColor: colors.onAccent,
+              ),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final colors = SpaceColors.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not create invite: ${e.toString()}',
+            style: SpaceTypography.bodyMedium(color: colors.primaryText),
+          ),
+          backgroundColor: colors.surface2,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
@@ -1903,6 +2242,9 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                           memberCount: space.memberCount,
                           joined: true,
                           loading: _openingId == space.id,
+                          onInvite: space.visibility == 'private'
+                              ? () => _showInviteCode(space)
+                              : null,
                           onTap: _openingId == null ? () => _open(space) : null,
                         );
                       },
@@ -2283,6 +2625,7 @@ class _SpaceCard extends StatelessWidget {
     this.memberCount = 0,
     this.joined = false,
     this.loading = false,
+    this.onInvite,
     this.onTap,
   });
 
@@ -2292,6 +2635,7 @@ class _SpaceCard extends StatelessWidget {
   final int memberCount;
   final bool joined;
   final bool loading;
+  final VoidCallback? onInvite;
   final VoidCallback? onTap;
 
   @override
@@ -2337,6 +2681,26 @@ class _SpaceCard extends StatelessWidget {
                     ),
                     child: Icon(icon, color: colors.onAccent, size: 24),
                   ),
+                  if (onInvite != null) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 36,
+                      child: OutlinedButton.icon(
+                        onPressed: onInvite,
+                        icon: const Icon(Icons.vpn_key_rounded, size: 16),
+                        label: const Text('Invite Code'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: activeColor,
+                          side: BorderSide(
+                            color: activeColor.withValues(alpha: 0.55),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   const Spacer(),
                   if (loading)
                     SizedBox(
@@ -2388,12 +2752,11 @@ class _SpaceCard extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 6,
                 children: [
-                  if (memberCount > 0)
-                    _GlassChip(
-                      icon: Icons.people_alt_rounded,
-                      label: '$memberCount Active',
-                      accent: colors.secondaryText,
-                    ),
+                  _GlassChip(
+                    icon: Icons.people_alt_rounded,
+                    label: '$memberCount Active',
+                    accent: colors.secondaryText,
+                  ),
                   _GlassChip(
                     icon: Icons.public_rounded,
                     label: joined ? 'Open Channel' : 'Nearby',
@@ -2455,11 +2818,132 @@ class _SpaceCard extends StatelessWidget {
   }
 }
 
+class PollComposerDialog extends StatefulWidget {
+  const PollComposerDialog({super.key, required this.onCreate});
+  final Future<void> Function(String question, List<String> options) onCreate;
+
+  @override
+  State<PollComposerDialog> createState() => _PollComposerDialogState();
+}
+
+class _PollComposerDialogState extends State<PollComposerDialog> {
+  final _question = TextEditingController();
+  final _options = List.generate(6, (_) => TextEditingController());
+  int _count = 2;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _question.dispose();
+    for (final option in _options) {
+      option.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final options = _options.take(_count).map((c) => c.text.trim()).toList();
+    if (_question.text.trim().isEmpty ||
+        options.any((s) => s.isEmpty) ||
+        options.map((s) => s.toLowerCase()).toSet().length != options.length) {
+      setState(
+        () => _error = 'Enter a question and distinct, non-empty options.',
+      );
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onCreate(_question.text.trim(), options);
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = 'Could not create poll. Please try again.';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_saving,
+    child: AlertDialog(
+      title: const Text('Create poll'),
+      content: SizedBox(
+        width: 360,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _question,
+                enabled: !_saving,
+                maxLength: 280,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Question'),
+              ),
+              for (var i = 0; i < _count; i++)
+                TextField(
+                  controller: _options[i],
+                  enabled: !_saving,
+                  maxLength: 100,
+                  decoration: InputDecoration(labelText: 'Option ${i + 1}'),
+                ),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Add option',
+                    icon: const Icon(Icons.add),
+                    onPressed: _saving || _count == 6
+                        ? null
+                        : () => setState(() => _count++),
+                  ),
+                  IconButton(
+                    tooltip: 'Remove last option',
+                    icon: const Icon(Icons.remove),
+                    onPressed: _saving || _count == 2
+                        ? null
+                        : () => setState(() {
+                            _options[--_count].clear();
+                          }),
+                  ),
+                ],
+              ),
+              if (_error != null)
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _submit,
+          child: Text(_saving ? 'Creating...' : 'Create poll'),
+        ),
+      ],
+    ),
+  );
+}
+
 class ChatComposer extends StatelessWidget {
   const ChatComposer({
     super.key,
     required this.controller,
     required this.onSend,
+    this.onAdd,
     this.replyingTo,
     this.spaceName,
     this.onCancelReply,
@@ -2467,6 +2951,7 @@ class ChatComposer extends StatelessWidget {
 
   final TextEditingController controller;
   final VoidCallback onSend;
+  final VoidCallback? onAdd;
   final ChatMessage? replyingTo;
   final String? spaceName;
   final VoidCallback? onCancelReply;
@@ -2535,10 +3020,12 @@ class ChatComposer extends StatelessWidget {
                   children: [
                     Padding(
                       padding: const EdgeInsets.only(bottom: 4),
-                      child: Icon(
-                        Icons.add_circle_rounded,
+                      child: IconButton(
+                        tooltip: 'Chat options',
+                        onPressed: onAdd,
+                        icon: const Icon(Icons.add_circle_rounded),
                         color: colors.secondaryText,
-                        size: 28,
+                        iconSize: 28,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -2619,11 +3106,13 @@ class MessageCard extends StatelessWidget {
     required this.message,
     required this.isMine,
     this.onLongPress,
+    this.onVote,
   });
 
   final ChatMessage message;
   final bool isMine;
   final VoidCallback? onLongPress;
+  final ValueChanged<int>? onVote;
 
   @override
   Widget build(BuildContext context) {
@@ -2748,6 +3237,57 @@ class MessageCard extends StatelessWidget {
                               color: isMine ? Colors.white : colors.primaryText,
                             ),
                           ),
+                          if (message.poll case final poll?) ...[
+                            const SizedBox(height: 12),
+                            for (var i = 0; i < poll.options.length; i++)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: OutlinedButton(
+                                  onPressed: onVote == null
+                                      ? null
+                                      : () => onVote!(i),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: isMine
+                                        ? Colors.white
+                                        : colors.primaryText,
+                                    disabledForegroundColor: isMine
+                                        ? Colors.white70
+                                        : colors.secondaryText,
+                                    side: BorderSide(
+                                      color: isMine
+                                          ? Colors.white54
+                                          : colors.outline,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: const EdgeInsets.all(10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        poll.selected == i
+                                            ? Icons.radio_button_checked
+                                            : Icons.radio_button_unchecked,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(poll.options[i])),
+                                      const SizedBox(width: 8),
+                                      Text('${poll.counts[i]}'),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            Text(
+                              '${poll.total} ${poll.total == 1 ? 'vote' : 'votes'}',
+                              style: TextStyle(
+                                color: isMine
+                                    ? Colors.white70
+                                    : colors.secondaryText,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -2839,10 +3379,20 @@ class StepCard extends StatelessWidget {
 }
 
 class SpaceTextField extends StatelessWidget {
-  const SpaceTextField({super.key, required this.controller, this.hintText});
+  const SpaceTextField({
+    super.key,
+    required this.controller,
+    this.hintText,
+    this.maxLines = 1,
+    this.maxLength,
+    this.onChanged,
+  });
 
   final TextEditingController controller;
   final String? hintText;
+  final int maxLines;
+  final int? maxLength;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -2850,13 +3400,22 @@ class SpaceTextField extends StatelessWidget {
 
     return TextField(
       controller: controller,
-      style: SpaceTypography.bodyLarge(color: colors.primaryText, fontWeight: FontWeight.w600),
+      maxLines: maxLines,
+      maxLength: maxLength,
+      onChanged: onChanged,
+      style: SpaceTypography.bodyLarge(
+        color: colors.primaryText,
+        fontWeight: FontWeight.w600,
+      ),
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
         filled: true,
         fillColor: colors.surface2,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderSide: BorderSide(color: colors.outline),
           borderRadius: BorderRadius.circular(16),
@@ -3235,9 +3794,11 @@ class ChatMessage {
     this.replyTo,
     this.replyText,
     this.createdAt,
+    this.poll,
   });
 
   final String id;
+  final PollData? poll;
   final String name;
   final String text;
   final Color color;

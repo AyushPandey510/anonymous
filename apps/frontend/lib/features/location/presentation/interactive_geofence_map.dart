@@ -22,6 +22,7 @@ class InteractiveGeofenceMap extends StatefulWidget {
     this.height = 360,
     this.allowPointSelection = true,
     this.showSearch = true,
+    this.autoLocate = true,
   });
 
   final GeoPoint point;
@@ -32,16 +33,19 @@ class InteractiveGeofenceMap extends StatefulWidget {
   final double? height;
   final bool allowPointSelection;
   final bool showSearch;
+  final bool autoLocate;
 
   @override
   State<InteractiveGeofenceMap> createState() => _InteractiveGeofenceMapState();
 }
 
-class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
+class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap>
+    with WidgetsBindingObserver {
   final _mapController = MapController();
   final _searchController = TextEditingController();
   final _locationService = const SpaceLocationService();
   final _searchRepository = const PlaceSearchRepository();
+  StreamSubscription<SpaceLocationPermissionState>? _locationStateSubscription;
 
   Timer? _debounce;
   List<PlaceSearchResult> _results = const [];
@@ -52,7 +56,13 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _centerOnUser());
+    WidgetsBinding.instance.addObserver(this);
+    _locationStateSubscription = _locationService
+        .permissionStateChanges()
+        .listen(_handlePermissionStateChanged, onError: (_) {});
+    if (widget.autoLocate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _centerOnUser());
+    }
   }
 
   @override
@@ -66,9 +76,21 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _locationStateSubscription?.cancel();
     _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed &&
+        widget.autoLocate &&
+        _status != null) {
+      _centerOnUser();
+    }
   }
 
   @override
@@ -330,6 +352,7 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
   }
 
   Future<void> _centerOnUser() async {
+    if (_locating) return;
     setState(() => _locating = true);
     try {
       final perm = await _locationService.permissionState();
@@ -351,6 +374,16 @@ class _InteractiveGeofenceMapState extends State<InteractiveGeofenceMap> {
         setState(() => _locating = false);
       }
     }
+  }
+
+  void _handlePermissionStateChanged(SpaceLocationPermissionState state) {
+    if (!mounted) return;
+    if (state == SpaceLocationPermissionState.granted) {
+      if (widget.autoLocate && _status != null) _centerOnUser();
+      return;
+    }
+
+    setState(() => _status = _permissionMessage(state));
   }
 
   void _onSearchChanged(String query) {

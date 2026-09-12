@@ -21,6 +21,7 @@ class AuthService {
   bool get isLoggedIn => _deviceId != null;
 
   Future<void> init() async {
+    client.onTokensChanged = _saveTokens;
     final prefs = await SharedPreferences.getInstance();
     _deviceId = prefs.getString(_keyDeviceId);
     final accessToken = prefs.getString(_keyAccessToken);
@@ -38,7 +39,13 @@ class AuthService {
   Future<bool> ensureLoggedIn() async {
     if (_deviceId != null && client.accessToken != null) {
       debugPrint('[Space Auth] Found existing session for device: $_deviceId');
-      return true;
+      if (client.refreshToken != null && await client.refreshSession()) {
+        debugPrint('[Space Auth] ✅ Existing session refreshed.');
+        return true;
+      }
+
+      debugPrint('[Space Auth] Existing session expired. Registering again.');
+      await _clearTokens();
     }
 
     if (_deviceId == null) {
@@ -48,23 +55,26 @@ class AuthService {
     }
 
     try {
-      debugPrint('[Space Auth] Registering device $_deviceId with backend: ${client.baseUrl} ...');
-      final response = await client.post('/auth/register', body: {
-        'device_id': _deviceId,
-        'device_name': _deviceName(),
-      });
+      debugPrint(
+        '[Space Auth] Registering device $_deviceId with backend: ${client.baseUrl} ...',
+      );
+      final response = await client.post(
+        '/auth/register',
+        body: {'device_id': _deviceId, 'device_name': _deviceName()},
+      );
 
       client.accessToken = response['access_token'] as String;
       client.refreshToken = response['refresh_token'] as String;
       _userId = response['user_id'] as String;
 
+      await _saveTokens(client.accessToken!, client.refreshToken!);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyAccessToken, client.accessToken!);
-      await prefs.setString(_keyRefreshToken, client.refreshToken!);
       await prefs.setString(_keyUserId, _userId!);
 
       lastError = null;
-      debugPrint('[Space Auth] ✅ Device authenticated successfully as user: $_userId');
+      debugPrint(
+        '[Space Auth] ✅ Device authenticated successfully as user: $_userId',
+      );
       return true;
     } catch (e) {
       lastError = e.toString();
@@ -74,6 +84,16 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    await _clearTokens();
+  }
+
+  Future<void> _saveTokens(String accessToken, String refreshToken) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAccessToken, accessToken);
+    await prefs.setString(_keyRefreshToken, refreshToken);
+  }
+
+  Future<void> _clearTokens() async {
     client.accessToken = null;
     client.refreshToken = null;
     final prefs = await SharedPreferences.getInstance();

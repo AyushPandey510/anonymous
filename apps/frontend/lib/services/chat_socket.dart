@@ -16,6 +16,10 @@ class WsMessageEvent extends WsEvent {
   final MessageData message;
 }
 
+class WsPollUpdatedEvent extends WsEvent {
+  const WsPollUpdatedEvent();
+}
+
 class WsReactionEvent extends WsEvent {
   const WsReactionEvent({
     required this.messageId,
@@ -83,6 +87,8 @@ class ChatSocket {
       final json = jsonDecode(data as String);
       if (json is! Map<String, dynamic>) return null;
       switch (json['type']) {
+        case 'poll_updated':
+          return const WsPollUpdatedEvent();
         case 'message':
           final message = json['message'];
           if (message is! Map<String, dynamic>) return null;

@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -11,8 +11,7 @@ import '../domain/geofence.dart';
 import '../domain/geofence_validator.dart';
 import '../domain/location_fix.dart';
 import 'interactive_geofence_map.dart';
-
-const _orbitMotionDuration = Duration(milliseconds: 3200);
+import 'orbit_animation.dart';
 
 class LocationSelectionScreen extends StatefulWidget {
   const LocationSelectionScreen({
@@ -62,25 +61,7 @@ class OrbitOpeningScreen extends StatefulWidget {
   State<OrbitOpeningScreen> createState() => _OrbitOpeningScreenState();
 }
 
-class _OrbitOpeningScreenState extends State<OrbitOpeningScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _orbitController;
-
-  @override
-  void initState() {
-    super.initState();
-    _orbitController = AnimationController(
-      vsync: this,
-      duration: _orbitMotionDuration,
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _orbitController.dispose();
-    super.dispose();
-  }
-
+class _OrbitOpeningScreenState extends State<OrbitOpeningScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
@@ -96,7 +77,7 @@ class _OrbitOpeningScreenState extends State<OrbitOpeningScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _OrbitAnimation(animation: _orbitController, size: 256),
+                  const OrbitAnimation(size: 256),
                   const SizedBox(height: 34),
                   const _OrbitCopy(compact: false),
                   const SizedBox(height: 58),
@@ -121,26 +102,28 @@ class _OrbitOpeningScreenState extends State<OrbitOpeningScreen>
 }
 
 class _LocationSelectionScreenState extends State<LocationSelectionScreen>
-    with SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver {
   final _locationService = const SpaceLocationService();
   final _validator = const GeofenceValidator();
-  late final AnimationController _orbitController;
+  StreamSubscription<SpaceLocationPermissionState>? _locationStateSubscription;
 
   late GeoPoint _selectedPoint;
   double _accuracy = 18;
   bool _hasDeviceFix = false;
+  bool _checkingLocation = false;
+  SpaceLocationPermissionState? _permissionState;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedPoint =
         widget.initialLocation ??
         const GeoPoint(latitude: 12.9716, longitude: 77.5946);
-    _orbitController = AnimationController(
-      vsync: this,
-      duration: _orbitMotionDuration,
-    )..repeat();
+    _locationStateSubscription = _locationService
+        .permissionStateChanges()
+        .listen(_handlePermissionStateChanged, onError: (_) {});
     _requestPermission();
   }
 
@@ -157,16 +140,31 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
 
   @override
   void dispose() {
-    _orbitController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _locationStateSubscription?.cancel();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      _requestPermission();
+    }
+  }
+
   Future<void> _requestPermission() async {
+    if (_checkingLocation) return;
+    setState(() => _checkingLocation = true);
     try {
       final perm = await _locationService.permissionState();
       if (!mounted) return;
       if (perm != SpaceLocationPermissionState.granted) {
-        setState(() => _error = _permissionMessage(perm));
+        setState(() {
+          _hasDeviceFix = false;
+          _permissionState = perm;
+          _error = _permissionMessage(perm);
+        });
         return;
       }
 
@@ -177,12 +175,46 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
         _selectedPoint = fix.point;
         _accuracy = fix.accuracyMeters ?? 18;
         _hasDeviceFix = true;
+        _permissionState = SpaceLocationPermissionState.granted;
         _error = null;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = 'Could not acquire GPS position');
+      setState(() {
+        _hasDeviceFix = false;
+        _error = 'Could not acquire GPS position';
+      });
+    } finally {
+      _checkingLocation = false;
+      if (mounted) setState(() {});
     }
+  }
+
+  Future<void> _resolveLocationIssue() async {
+    final state = _permissionState;
+    if (state == SpaceLocationPermissionState.deniedForever) {
+      await _locationService.openAppSettings();
+      return;
+    }
+    if (state == SpaceLocationPermissionState.servicesDisabled) {
+      await _locationService.openLocationSettings();
+      return;
+    }
+    await _requestPermission();
+  }
+
+  void _handlePermissionStateChanged(SpaceLocationPermissionState state) {
+    if (!mounted) return;
+    if (state == SpaceLocationPermissionState.granted) {
+      _requestPermission();
+      return;
+    }
+
+    setState(() {
+      _hasDeviceFix = false;
+      _permissionState = state;
+      _error = _permissionMessage(state);
+    });
   }
 
   String _permissionMessage(SpaceLocationPermissionState state) {
@@ -301,10 +333,7 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
                           ],
                         ),
                       ),
-                      _OrbitAnimation(
-                        animation: _orbitController,
-                        size: orbitSize,
-                      ),
+                      OrbitAnimation(size: orbitSize),
                       SizedBox(height: compact ? 18 : 26),
                       Padding(
                         padding: EdgeInsets.symmetric(
@@ -325,6 +354,7 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
                             validation: _validation,
                             allowPointSelection: false,
                             showSearch: false,
+                            autoLocate: false,
                             onPointChanged: (point) {
                               setState(() {
                                 _selectedPoint = point;
@@ -348,9 +378,23 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
                         child: _LocationConfirmBar(
                           error: _error,
                           selectedPoint: _selectedPoint,
-                          onConfirm: _hasDeviceFix && _selectedPoint.isValid
+                          onConfirm: _checkingLocation
+                              ? null
+                              : _hasDeviceFix && _selectedPoint.isValid
                               ? _confirmLocation
-                              : null,
+                              : _resolveLocationIssue,
+                          label: _checkingLocation
+                              ? 'Detecting orbit...'
+                              : _hasDeviceFix
+                              ? 'Use current orbit'
+                              : _permissionState ==
+                                    SpaceLocationPermissionState.deniedForever
+                              ? 'Open app settings'
+                              : _permissionState ==
+                                    SpaceLocationPermissionState
+                                        .servicesDisabled
+                              ? 'Open location settings'
+                              : 'Retry current orbit',
                         ),
                       ),
                     ],
@@ -432,413 +476,6 @@ class _OrbitBackground extends StatelessWidget {
   }
 }
 
-class _OrbitAnimation extends StatelessWidget {
-  const _OrbitAnimation({required this.animation, required this.size});
-
-  final Animation<double> animation;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return SizedBox(
-      width: size + 36,
-      height: size + 36,
-      child: AnimatedBuilder(
-        animation: animation,
-        builder: (context, _) {
-          final pulse = 0.5 + math.sin(animation.value * math.pi * 2) * 0.5;
-          return Transform.scale(
-            scale: 1 + (pulse * 0.018),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: colors.accent.withValues(
-                      alpha: isDark ? 0.19 : 0.17,
-                    ),
-                    blurRadius: 42,
-                    spreadRadius: 4,
-                  ),
-                ],
-              ),
-              child: Center(
-                child: ClipOval(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                    child: Container(
-                      width: size,
-                      height: size,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.white.withValues(alpha: 0.42),
-                        border: Border.all(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.12)
-                              : Colors.white.withValues(alpha: 0.66),
-                        ),
-                      ),
-                      child: CustomPaint(
-                        painter: _OrbitPainter(
-                          progress: animation.value,
-                          accent: colors.accent,
-                          isDark: isDark,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _OrbitPainter extends CustomPainter {
-  const _OrbitPainter({
-    required this.progress,
-    required this.accent,
-    required this.isDark,
-  });
-
-  final double progress;
-  final Color accent;
-  final bool isDark;
-
-  static const _crystalShards = <_CrystalShard>[
-    _CrystalShard(
-      anchor: Offset(-0.68, 0.42),
-      size: 0.17,
-      sides: 6,
-      rotation: 0.22,
-      speed: 0.54,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.48, 0.05),
-      size: 0.19,
-      sides: 7,
-      rotation: 0.64,
-      speed: 0.48,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.34, -0.04),
-      size: 0.12,
-      sides: 6,
-      rotation: 0.08,
-      speed: 0.72,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.18, 0.06),
-      size: 0.16,
-      sides: 7,
-      rotation: 0.42,
-      speed: 0.58,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.02, 0.16),
-      size: 0.11,
-      sides: 6,
-      rotation: 0.74,
-      speed: 0.68,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.14, 0.04),
-      size: 0.15,
-      sides: 6,
-      rotation: 0.18,
-      speed: 0.62,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.30, 0.14),
-      size: 0.13,
-      sides: 7,
-      rotation: 0.55,
-      speed: 0.52,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.50, 0.25),
-      size: 0.17,
-      sides: 6,
-      rotation: 0.36,
-      speed: 0.44,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.37, 0.48),
-      size: 0.10,
-      sides: 6,
-      rotation: 0.82,
-      speed: 0.70,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.13, 0.58),
-      size: 0.18,
-      sides: 7,
-      rotation: 0.24,
-      speed: 0.50,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.15, 0.55),
-      size: 0.20,
-      sides: 6,
-      rotation: 0.70,
-      speed: 0.46,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.32, 0.38),
-      size: 0.13,
-      sides: 6,
-      rotation: 0.48,
-      speed: 0.66,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.54, -0.34),
-      size: 0.08,
-      sides: 6,
-      rotation: 0.16,
-      speed: 0.80,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.28, -0.42),
-      size: 0.07,
-      sides: 6,
-      rotation: 0.58,
-      speed: 0.78,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.04, -0.45),
-      size: 0.09,
-      sides: 7,
-      rotation: 0.26,
-      speed: 0.74,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.42, -0.35),
-      size: 0.08,
-      sides: 6,
-      rotation: 0.62,
-      speed: 0.76,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.66, -0.18),
-      size: 0.07,
-      sides: 6,
-      rotation: 0.04,
-      speed: 0.82,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.52, 0.78),
-      size: 0.07,
-      sides: 6,
-      rotation: 0.32,
-      speed: 0.86,
-    ),
-    _CrystalShard(
-      anchor: Offset(-0.08, 0.84),
-      size: 0.18,
-      sides: 6,
-      rotation: 0.50,
-      speed: 0.40,
-    ),
-    _CrystalShard(
-      anchor: Offset(0.64, 0.67),
-      size: 0.07,
-      sides: 6,
-      rotation: 0.22,
-      speed: 0.84,
-    ),
-  ];
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.shortestSide / 2;
-    final turn = progress * math.pi * 2;
-    final ringPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.1
-      ..color = accent.withValues(alpha: isDark ? 0.17 : 0.22);
-    final glowPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          accent.withValues(alpha: isDark ? 0.20 : 0.26),
-          Colors.transparent,
-        ],
-      ).createShader(Rect.fromCircle(center: center, radius: radius * 0.95));
-
-    canvas.drawCircle(center, radius * 0.92, glowPaint);
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(-0.24);
-    canvas.scale(1, 0.46);
-    canvas.drawCircle(Offset.zero, radius * 0.66, ringPaint);
-    canvas.restore();
-
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(turn * 0.82 + 0.64);
-    canvas.scale(1, 0.34);
-    canvas.drawCircle(Offset.zero, radius * 0.78, ringPaint);
-    canvas.restore();
-
-    final corePaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          const Color(0xFFE1E0FF).withValues(alpha: isDark ? 0.12 : 0.46),
-          accent.withValues(alpha: isDark ? 0.20 : 0.22),
-          Colors.transparent,
-        ],
-        stops: const [0, 0.48, 1],
-      ).createShader(Rect.fromCircle(center: center, radius: radius * 0.62));
-    canvas.drawCircle(center, radius * 0.54, corePaint);
-
-    for (var i = 0; i < _crystalShards.length; i++) {
-      final shard = _crystalShards[i];
-      final phase = turn * (1.2 + shard.speed) + shard.rotation;
-      final drift = Offset(
-        math.cos(phase) * radius * 0.045,
-        math.sin(phase * 1.2) * radius * 0.052,
-      );
-      final shardCenter =
-          center +
-          Offset(shard.anchor.dx * radius, shard.anchor.dy * radius) +
-          drift;
-      final shardRadius =
-          radius * shard.size * (0.96 + math.sin(phase + i) * 0.05);
-      _drawCrystal(
-        canvas,
-        center: shardCenter,
-        radius: shardRadius,
-        sides: shard.sides,
-        rotation: shard.rotation + turn * (0.36 + shard.speed * 0.18),
-        seed: i,
-      );
-    }
-
-    final centerDot = Paint()
-      ..color = accent.withValues(alpha: 0.92)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.6);
-    canvas.drawCircle(center, radius * 0.035, centerDot);
-  }
-
-  void _drawCrystal(
-    Canvas canvas, {
-    required Offset center,
-    required double radius,
-    required int sides,
-    required double rotation,
-    required int seed,
-  }) {
-    final vertices = <Offset>[];
-    final stretchX = 0.92 + ((seed % 4) * 0.05);
-    final stretchY = 0.82 + ((seed % 5) * 0.045);
-
-    for (var i = 0; i < sides; i++) {
-      final angle = rotation + (math.pi * 2 * i / sides);
-      final irregularity = 0.78 + (((seed * 17 + i * 29) % 38) / 100);
-      vertices.add(
-        center +
-            Offset(
-              math.cos(angle) * radius * irregularity * stretchX,
-              math.sin(angle) * radius * irregularity * stretchY,
-            ),
-      );
-    }
-
-    final polygon = Path()..moveTo(vertices.first.dx, vertices.first.dy);
-    for (final vertex in vertices.skip(1)) {
-      polygon.lineTo(vertex.dx, vertex.dy);
-    }
-    polygon.close();
-
-    final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: isDark ? 0.18 : 0.10)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4);
-    canvas.drawPath(polygon.shift(const Offset(1.8, 2.4)), shadowPaint);
-
-    final light = const Offset(-0.58, -0.82);
-    final dark = const Color(0xFF26206F);
-    final mid = const Color(0xFF4F46E5);
-    final bright = const Color(0xFF858BFF);
-    final icy = const Color(0xFFC8D7FF);
-    final baseAlpha = isDark ? 0.94 : 0.82;
-
-    for (var i = 0; i < vertices.length; i++) {
-      final a = vertices[i];
-      final b = vertices[(i + 1) % vertices.length];
-      final edgeVector = Offset(
-        ((a.dx + b.dx) / 2) - center.dx,
-        ((a.dy + b.dy) / 2) - center.dy,
-      );
-      final dot =
-          ((edgeVector.dx * light.dx) + (edgeVector.dy * light.dy)) /
-          math.max(1, edgeVector.distance * light.distance);
-      final lit = (((dot + 1) / 2) * 0.9 + 0.06).clamp(0.0, 1.0).toDouble();
-      var facetColor = Color.lerp(dark, bright, lit)!;
-      if ((seed + i) % 5 == 0) {
-        facetColor = Color.lerp(facetColor, icy, 0.46)!;
-      } else if ((seed + i) % 3 == 0) {
-        facetColor = Color.lerp(facetColor, mid, 0.36)!;
-      }
-
-      final facet = Path()
-        ..moveTo(center.dx, center.dy)
-        ..lineTo(a.dx, a.dy)
-        ..lineTo(b.dx, b.dy)
-        ..close();
-      canvas.drawPath(
-        facet,
-        Paint()..color = facetColor.withValues(alpha: baseAlpha),
-      );
-    }
-
-    final outlinePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(0.7, radius * 0.045)
-      ..color = const Color(0xFF151A62).withValues(alpha: isDark ? 0.42 : 0.24);
-    canvas.drawPath(polygon, outlinePaint);
-
-    final glint = Path()
-      ..moveTo(center.dx, center.dy)
-      ..lineTo(vertices.first.dx, vertices.first.dy)
-      ..lineTo(vertices[1].dx, vertices[1].dy)
-      ..close();
-    canvas.drawPath(
-      glint,
-      Paint()..color = Colors.white.withValues(alpha: isDark ? 0.18 : 0.28),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _OrbitPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.accent != accent ||
-        oldDelegate.isDark != isDark;
-  }
-}
-
-class _CrystalShard {
-  const _CrystalShard({
-    required this.anchor,
-    required this.size,
-    required this.sides,
-    required this.rotation,
-    required this.speed,
-  });
-
-  final Offset anchor;
-  final double size;
-  final int sides;
-  final double rotation;
-  final double speed;
-}
 
 class _OrbitCopy extends StatelessWidget {
   const _OrbitCopy({required this.compact});
@@ -884,11 +521,13 @@ class _OrbitCopy extends StatelessWidget {
 
 class _LocationConfirmBar extends StatelessWidget {
   const _LocationConfirmBar({
+    required this.label,
     required this.selectedPoint,
     required this.onConfirm,
     this.error,
   });
 
+  final String label;
   final GeoPoint selectedPoint;
   final VoidCallback? onConfirm;
   final String? error;
@@ -937,7 +576,7 @@ class _LocationConfirmBar extends StatelessWidget {
           ],
           const SizedBox(height: 12),
           _LocationPrimaryButton(
-            label: 'Use current orbit',
+            label: label,
             icon: Icons.my_location_rounded,
             onPressed: onConfirm,
           ),
