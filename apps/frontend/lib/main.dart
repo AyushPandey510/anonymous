@@ -2489,14 +2489,14 @@ class _GradientFab extends StatelessWidget {
         height: 64,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6)],
+          gradient: LinearGradient(
+            colors: [colors.accent, colors.secondaryAccent],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF8B5CF6).withValues(alpha: 0.36),
+              color: colors.secondaryAccent.withValues(alpha: 0.36),
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
@@ -2613,7 +2613,7 @@ class _SpaceButton extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
         gradient: LinearGradient(
-          colors: [colors.accent, const Color(0xFFD0BCFF)],
+          colors: [colors.accent, colors.secondaryAccent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -2636,12 +2636,12 @@ class _SpaceButton extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 20, color: const Color(0xFF001A42)),
+                Icon(icon, size: 20, color: colors.onAccent),
                 const SizedBox(width: 10),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Color(0xFF001A42),
+                  style: TextStyle(
+                    color: colors.onAccent,
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                   ),
@@ -2682,7 +2682,7 @@ class _SpaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
     final icon = joined ? Icons.forum_rounded : _spaceIcon(name);
-    final activeColor = joined ? const Color(0xFFD0BCFF) : colors.accent;
+    final activeColor = joined ? colors.secondaryAccent : colors.accent;
     final body = description?.trim();
 
     return Material(
@@ -2707,7 +2707,7 @@ class _SpaceCard extends StatelessWidget {
                       gradient: LinearGradient(
                         colors: [
                           activeColor.withValues(alpha: 0.92),
-                          const Color(0xFF8B5CF6).withValues(alpha: 0.82),
+                          colors.secondaryAccent.withValues(alpha: 0.82),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -3106,7 +3106,7 @@ class ChatComposer extends StatelessWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: LinearGradient(
-                            colors: [colors.accent, const Color(0xFF8B5CF6)],
+                            colors: [colors.accent, colors.secondaryAccent],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -3207,8 +3207,8 @@ class MessageCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         borderRadius: bubbleRadius,
                         gradient: isMine
-                            ? const LinearGradient(
-                                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                            ? LinearGradient(
+                                colors: [colors.accent, colors.secondaryAccent],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               )
@@ -3626,7 +3626,7 @@ class SpaceButton extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
         gradient: LinearGradient(
-          colors: [colors.accent, const Color(0xFFD0BCFF)],
+          colors: [colors.accent, colors.secondaryAccent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -3650,21 +3650,21 @@ class SpaceButton extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (loading)
-                  const SizedBox(
+                  SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Color(0xFF001A42),
+                      color: colors.onAccent,
                     ),
                   )
                 else
-                  Icon(icon, size: 20, color: const Color(0xFF001A42)),
+                  Icon(icon, size: 20, color: colors.onAccent),
                 const SizedBox(width: 10),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Color(0xFF001A42),
+                  style: TextStyle(
+                    color: colors.onAccent,
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                   ),

@@ -263,9 +263,9 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
                             const Color(0xFF02040A),
                           ]
                         : [
-                            const Color(0xFFEFF3F8),
+                            const Color(0xFFFFF1D9),
                             colors.background,
-                            Colors.white,
+                            const Color(0xFFFFF6E8),
                           ],
                     stops: const [0, 0.56, 1],
                   ),
@@ -441,9 +441,9 @@ class _OrbitBackground extends StatelessWidget {
                           const Color(0xFF02040A),
                         ]
                       : [
-                          const Color(0xFFEFF3F8),
+                          const Color(0xFFFFF1D9),
                           colors.background,
-                          Colors.white,
+                          const Color(0xFFFFF6E8),
                         ],
                   stops: const [0, 0.56, 1],
                 ),
@@ -690,7 +690,7 @@ class _LocationPrimaryButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
             gradient: LinearGradient(
-              colors: [colors.accent, const Color(0xFFD0BCFF)],
+              colors: [colors.accent, colors.secondaryAccent],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -705,12 +705,12 @@ class _LocationPrimaryButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: const Color(0xFF001A42), size: 20),
+              Icon(icon, color: colors.onAccent, size: 20),
               const SizedBox(width: 10),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Color(0xFF001A42),
+                style: TextStyle(
+                  color: colors.onAccent,
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                 ),

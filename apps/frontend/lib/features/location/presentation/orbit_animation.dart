@@ -15,6 +15,14 @@ class OrbitAnimation extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final imageAsset = reduceMotion
+        ? dark
+              ? 'assets/orbit/crystals-still.webp'
+              : 'assets/orbit/crystals-still-warm.webp'
+        : dark
+        ? 'assets/orbit/crystals.webp'
+        : 'assets/orbit/crystals-warm.webp';
+
     return SizedBox(
       width: size + 36,
       height: size + 36,
@@ -24,12 +32,10 @@ class OrbitAnimation extends StatelessWidget {
           child: DecoratedBox(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: dark ? const Color(0xFF242637) : const Color(0xFFF3F2FF),
+              color: dark ? const Color(0xFF242637) : const Color(0xFFF4E7D0),
             ),
             child: Image.asset(
-              reduceMotion
-                  ? 'assets/orbit/crystals-still.webp'
-                  : 'assets/orbit/crystals.webp',
+              imageAsset,
               fit: BoxFit.contain,
               excludeFromSemantics: true,
               gaplessPlayback: true,

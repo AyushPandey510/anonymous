@@ -41,7 +41,9 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
   }
 
   List<_CrystalData> _generateCrystals() {
-    final rand = math.Random(42); // Deterministic seed for reproducible aesthetic composition
+    final rand = math.Random(
+      42,
+    ); // Deterministic seed for reproducible aesthetic composition
     final list = <_CrystalData>[];
 
     const int count = 28;
@@ -49,7 +51,8 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
       final orbitRx = 35.0 + rand.nextDouble() * 85.0;
       final orbitRy = 25.0 + rand.nextDouble() * 65.0;
       final orbitAngleOffset = rand.nextDouble() * 2 * math.pi;
-      final orbitSpeed = (rand.nextBool() ? 1 : -1) * (0.3 + rand.nextDouble() * 0.7);
+      final orbitSpeed =
+          (rand.nextBool() ? 1 : -1) * (0.3 + rand.nextDouble() * 0.7);
 
       final floatAmpX = 4.0 + rand.nextDouble() * 8.0;
       final floatAmpY = 6.0 + rand.nextDouble() * 12.0;
@@ -62,25 +65,29 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
       final rotSpeedZ = (rand.nextDouble() - 0.5) * 1.8;
 
       final size = 7.0 + rand.nextDouble() * 11.0;
-      final crystalType = rand.nextInt(3); // 0: Diamond Octahedron, 1: Elongated Crystal, 2: Poly Fragment
+      final crystalType = rand.nextInt(
+        3,
+      ); // 0: Diamond Octahedron, 1: Elongated Crystal, 2: Poly Fragment
 
-      list.add(_CrystalData(
-        orbitRx: orbitRx,
-        orbitRy: orbitRy,
-        orbitAngleOffset: orbitAngleOffset,
-        orbitSpeed: orbitSpeed,
-        floatAmpX: floatAmpX,
-        floatAmpY: floatAmpY,
-        floatAmpZ: floatAmpZ,
-        floatFreq: floatFreq,
-        floatPhase: floatPhase,
-        rotSpeedX: rotSpeedX,
-        rotSpeedY: rotSpeedY,
-        rotSpeedZ: rotSpeedZ,
-        size: size,
-        crystalType: crystalType,
-        colorIndex: i % 4,
-      ));
+      list.add(
+        _CrystalData(
+          orbitRx: orbitRx,
+          orbitRy: orbitRy,
+          orbitAngleOffset: orbitAngleOffset,
+          orbitSpeed: orbitSpeed,
+          floatAmpX: floatAmpX,
+          floatAmpY: floatAmpY,
+          floatAmpZ: floatAmpZ,
+          floatFreq: floatFreq,
+          floatPhase: floatPhase,
+          rotSpeedX: rotSpeedX,
+          rotSpeedY: rotSpeedY,
+          rotSpeedZ: rotSpeedZ,
+          size: size,
+          crystalType: crystalType,
+          colorIndex: i % 4,
+        ),
+      );
     }
     return list;
   }
@@ -110,7 +117,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                             colors.background,
                           ]
                         : [
-                            const Color(0xFFEEF2FF).withValues(alpha: 0.7),
+                            const Color(0xFFFFF1D9).withValues(alpha: 0.7),
                             colors.background,
                           ],
                   ),
@@ -144,13 +151,21 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                               gradient: RadialGradient(
                                 colors: isDark
                                     ? [
-                                        const Color(0xFF101928).withValues(alpha: 0.65),
-                                        const Color(0xFF0B1017).withValues(alpha: 0.2),
+                                        const Color(
+                                          0xFF101928,
+                                        ).withValues(alpha: 0.65),
+                                        const Color(
+                                          0xFF0B1017,
+                                        ).withValues(alpha: 0.2),
                                         Colors.transparent,
                                       ]
                                     : [
-                                        const Color(0xFFEEF2FF).withValues(alpha: 0.85),
-                                        const Color(0xFFE0E7FF).withValues(alpha: 0.35),
+                                        const Color(
+                                          0xFFFFF1D9,
+                                        ).withValues(alpha: 0.85),
+                                        const Color(
+                                          0xFFE9B875,
+                                        ).withValues(alpha: 0.35),
                                         Colors.transparent,
                                       ],
                                 stops: const [0.0, 0.7, 1.0],
@@ -158,8 +173,10 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                               boxShadow: [
                                 BoxShadow(
                                   color: isDark
-                                      ? const Color(0xFF3B82F6).withValues(alpha: 0.08)
-                                      : const Color(0xFF818CF8).withValues(alpha: 0.15),
+                                      ? const Color(
+                                          0xFF3B82F6,
+                                        ).withValues(alpha: 0.08)
+                                      : colors.accent.withValues(alpha: 0.15),
                                   blurRadius: 32,
                                   spreadRadius: 8,
                                 ),
@@ -175,8 +192,12 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: isDark
-                                    ? const Color(0xFF3B82F6).withValues(alpha: 0.1)
-                                    : const Color(0xFF818CF8).withValues(alpha: 0.18),
+                                    ? const Color(
+                                        0xFF3B82F6,
+                                      ).withValues(alpha: 0.1)
+                                    : colors.secondaryAccent.withValues(
+                                        alpha: 0.18,
+                                      ),
                                 width: 1.0,
                               ),
                             ),
@@ -212,14 +233,11 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: isDark
-                            ? [
-                                const Color(0xFFAFC5FF),
-                                const Color(0xFF8B5CF6),
-                              ]
+                            ? [const Color(0xFFAFC5FF), const Color(0xFF8B5CF6)]
                             : [
-                                const Color(0xFF3B82F6),
-                                const Color(0xFF6366F1),
-                                const Color(0xFF8B5CF6),
+                                colors.accent,
+                                colors.secondaryAccent,
+                                const Color(0xFF090807),
                               ],
                       ).createShader(bounds);
                     },
@@ -229,7 +247,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                       style: SpaceTypography.headingLarge(
                         fontSize: 38,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: -0.8,
+                        letterSpacing: 0,
                         color: Colors.white,
                       ).copyWith(height: 1.15),
                     ),
@@ -311,17 +329,57 @@ class _CrystalsPainter extends CustomPainter {
 
   // Soft futuristic palette for faceted stones
   static const _lightPalettes = [
-    [Color(0xFF6366F1), Color(0xFF818CF8), Color(0xFFA5B4FC), Color(0xFFC7D2FE)],
-    [Color(0xFF4F46E5), Color(0xFF6366F1), Color(0xFF818CF8), Color(0xFFA5B4FC)],
-    [Color(0xFF8B5CF6), Color(0xFFA78BFA), Color(0xFFC4B5FD), Color(0xFFDDD6FE)],
-    [Color(0xFF3B82F6), Color(0xFF60A5FA), Color(0xFF93C5FD), Color(0xFFBFDBFE)],
+    [
+      Color(0xFFC45A11),
+      Color(0xFFD7791A),
+      Color(0xFFE9B875),
+      Color(0xFFFFF1D9),
+    ],
+    [
+      Color(0xFF8F3208),
+      Color(0xFFC45A11),
+      Color(0xFFE09A3E),
+      Color(0xFFF9EEDC),
+    ],
+    [
+      Color(0xFF090807),
+      Color(0xFF3D3329),
+      Color(0xFF8F3208),
+      Color(0xFFE9B875),
+    ],
+    [
+      Color(0xFFB4490B),
+      Color(0xFFD7791A),
+      Color(0xFFE9D5B8),
+      Color(0xFFFFF6E8),
+    ],
   ];
 
   static const _darkPalettes = [
-    [Color(0xFF4338CA), Color(0xFF6366F1), Color(0xFF818CF8), Color(0xFFA5B4FC)],
-    [Color(0xFF3B82F6), Color(0xFF60A5FA), Color(0xFF93C5FD), Color(0xFFBFDBFE)],
-    [Color(0xFF7C3AED), Color(0xFF8B5CF6), Color(0xFFA78BFA), Color(0xFFC4B5FD)],
-    [Color(0xFF2563EB), Color(0xFF3B82F6), Color(0xFF60A5FA), Color(0xFFAFC5FF)],
+    [
+      Color(0xFF4338CA),
+      Color(0xFF6366F1),
+      Color(0xFF818CF8),
+      Color(0xFFA5B4FC),
+    ],
+    [
+      Color(0xFF3B82F6),
+      Color(0xFF60A5FA),
+      Color(0xFF93C5FD),
+      Color(0xFFBFDBFE),
+    ],
+    [
+      Color(0xFF7C3AED),
+      Color(0xFF8B5CF6),
+      Color(0xFFA78BFA),
+      Color(0xFFC4B5FD),
+    ],
+    [
+      Color(0xFF2563EB),
+      Color(0xFF3B82F6),
+      Color(0xFF60A5FA),
+      Color(0xFFAFC5FF),
+    ],
   ];
 
   @override
@@ -337,9 +395,13 @@ class _CrystalsPainter extends CustomPainter {
       final floatTime = t * c.floatFreq + c.floatPhase;
 
       // 3D position
-      final posX = math.cos(angle) * c.orbitRx + math.sin(floatTime) * c.floatAmpX;
-      final posY = math.sin(angle) * c.orbitRy + math.cos(floatTime * 0.8) * c.floatAmpY;
-      final posZ = math.sin(angle * 1.5) * 40.0 + math.sin(floatTime * 1.2) * c.floatAmpZ;
+      final posX =
+          math.cos(angle) * c.orbitRx + math.sin(floatTime) * c.floatAmpX;
+      final posY =
+          math.sin(angle) * c.orbitRy + math.cos(floatTime * 0.8) * c.floatAmpY;
+      final posZ =
+          math.sin(angle * 1.5) * 40.0 +
+          math.sin(floatTime * 1.2) * c.floatAmpZ;
 
       // Rotation angles
       final rotX = t * c.rotSpeedX;
@@ -352,16 +414,18 @@ class _CrystalsPainter extends CustomPainter {
       final screenX = cx + posX * scale;
       final screenY = cy + posY * scale;
 
-      renderedStones.add(_RenderedStone(
-        screenX: screenX,
-        screenY: screenY,
-        depthZ: posZ,
-        scale: scale,
-        rotX: rotX,
-        rotY: rotY,
-        rotZ: rotZ,
-        data: c,
-      ));
+      renderedStones.add(
+        _RenderedStone(
+          screenX: screenX,
+          screenY: screenY,
+          depthZ: posZ,
+          scale: scale,
+          rotX: rotX,
+          rotY: rotY,
+          rotZ: rotZ,
+          data: c,
+        ),
+      );
     }
 
     // 2. Sort by depth (back to front painter's algorithm)
@@ -439,7 +503,11 @@ class _CrystalsPainter extends CustomPainter {
       // Back-face culling
       if (nz > 0) {
         final norm = _normalize3D(nx, ny, nz);
-        final dot = (norm[0] * lightDir[0] + norm[1] * lightDir[1] + norm[2] * lightDir[2]).clamp(0.0, 1.0);
+        final dot =
+            (norm[0] * lightDir[0] +
+                    norm[1] * lightDir[1] +
+                    norm[2] * lightDir[2])
+                .clamp(0.0, 1.0);
         faceOrder.add(_FaceInfo(index: i, avgZ: avgZ, brightness: dot));
       }
     }
@@ -450,7 +518,9 @@ class _CrystalsPainter extends CustomPainter {
     final strokePaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.6
-      ..color = (isDark ? Colors.white : Colors.indigo).withValues(alpha: 0.18 * opacity);
+      ..color = (isDark ? Colors.white : const Color(0xFF8F3208)).withValues(
+        alpha: 0.18 * opacity,
+      );
 
     for (final fi in faceOrder) {
       final face = faces[fi.index];
@@ -468,7 +538,10 @@ class _CrystalsPainter extends CustomPainter {
       path.close();
 
       // Shaded color selection based on facet angle
-      final colorIdx = (fi.brightness * (palette.length - 1)).round().clamp(0, palette.length - 1);
+      final colorIdx = (fi.brightness * (palette.length - 1)).round().clamp(
+        0,
+        palette.length - 1,
+      );
       paint.color = palette[colorIdx].withValues(alpha: opacity);
 
       canvas.drawPath(path, paint);
@@ -480,12 +553,12 @@ class _CrystalsPainter extends CustomPainter {
     if (type == 0) {
       // Octahedral Diamond Crystal
       final vertices = [
-        [0.0, -s * 1.3, 0.0],  // 0 Top
+        [0.0, -s * 1.3, 0.0], // 0 Top
         [-s * 0.9, 0.0, -s * 0.7], // 1 Front-Left
-        [s * 0.9, 0.0, -s * 0.7],  // 2 Front-Right
-        [s * 0.7, 0.0, s * 0.9],   // 3 Back-Right
-        [-s * 0.7, 0.0, s * 0.9],  // 4 Back-Left
-        [0.0, s * 1.3, 0.0],   // 5 Bottom
+        [s * 0.9, 0.0, -s * 0.7], // 2 Front-Right
+        [s * 0.7, 0.0, s * 0.9], // 3 Back-Right
+        [-s * 0.7, 0.0, s * 0.9], // 4 Back-Left
+        [0.0, s * 1.3, 0.0], // 5 Bottom
       ];
       final faces = [
         [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1], // Top pyramid
@@ -495,16 +568,16 @@ class _CrystalsPainter extends CustomPainter {
     } else if (type == 1) {
       // Elongated Hexagonal Crystal Prism
       final vertices = [
-        [0.0, -s * 1.4, 0.0],   // 0 Top Apex
+        [0.0, -s * 1.4, 0.0], // 0 Top Apex
         [-s * 0.8, -s * 0.4, -s * 0.6], // 1
-        [s * 0.8, -s * 0.4, -s * 0.6],  // 2
-        [s * 0.6, -s * 0.4, s * 0.8],   // 3
-        [-s * 0.6, -s * 0.4, s * 0.8],  // 4
-        [-s * 0.7, s * 0.9, -s * 0.5],  // 5
-        [s * 0.7, s * 0.9, -s * 0.5],   // 6
-        [s * 0.5, s * 0.9, s * 0.7],    // 7
-        [-s * 0.5, s * 0.9, s * 0.7],   // 8
-        [0.0, s * 1.4, 0.0],    // 9 Bottom Apex
+        [s * 0.8, -s * 0.4, -s * 0.6], // 2
+        [s * 0.6, -s * 0.4, s * 0.8], // 3
+        [-s * 0.6, -s * 0.4, s * 0.8], // 4
+        [-s * 0.7, s * 0.9, -s * 0.5], // 5
+        [s * 0.7, s * 0.9, -s * 0.5], // 6
+        [s * 0.5, s * 0.9, s * 0.7], // 7
+        [-s * 0.5, s * 0.9, s * 0.7], // 8
+        [0.0, s * 1.4, 0.0], // 9 Bottom Apex
       ];
       final faces = [
         [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1], // Top Cap
@@ -515,22 +588,35 @@ class _CrystalsPainter extends CustomPainter {
     } else {
       // Asymmetrical Low-Poly Rock/Fragment
       final vertices = [
-        [-s * 0.4, -s * 1.0, 0.0],  // 0 Top
+        [-s * 0.4, -s * 1.0, 0.0], // 0 Top
         [-s * 1.1, -s * 0.2, -s * 0.6], // 1
-        [s * 0.9, -s * 0.4, -s * 0.8],  // 2
-        [s * 1.0, 0.2, s * 0.7],   // 3
-        [-s * 0.8, 0.4, s * 0.9],  // 4
-        [0.2, s * 1.1, -s * 0.3],  // 5 Bottom
+        [s * 0.9, -s * 0.4, -s * 0.8], // 2
+        [s * 1.0, 0.2, s * 0.7], // 3
+        [-s * 0.8, 0.4, s * 0.9], // 4
+        [0.2, s * 1.1, -s * 0.3], // 5 Bottom
       ];
       final faces = [
-        [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1],
-        [5, 2, 1], [5, 3, 2], [5, 4, 3], [5, 1, 4],
+        [0, 1, 2],
+        [0, 2, 3],
+        [0, 3, 4],
+        [0, 4, 1],
+        [5, 2, 1],
+        [5, 3, 2],
+        [5, 4, 3],
+        [5, 1, 4],
       ];
       return _Geometry(vertices, faces);
     }
   }
 
-  List<double> _rotate3D(double x, double y, double z, double rx, double ry, double rz) {
+  List<double> _rotate3D(
+    double x,
+    double y,
+    double z,
+    double rx,
+    double ry,
+    double rz,
+  ) {
     // Rotate X
     final cosX = math.cos(rx);
     final sinX = math.sin(rx);
@@ -593,7 +679,11 @@ class _Geometry {
 }
 
 class _FaceInfo {
-  _FaceInfo({required this.index, required this.avgZ, required this.brightness});
+  _FaceInfo({
+    required this.index,
+    required this.avgZ,
+    required this.brightness,
+  });
   final int index;
   final double avgZ;
   final double brightness;

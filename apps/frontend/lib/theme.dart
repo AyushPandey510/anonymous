@@ -74,27 +74,27 @@ class SpaceColors extends ThemeExtension<SpaceColors> {
   );
 
   static const light = SpaceColors(
-    background: Color(0xFFF7F9FB),
-    surface: Color(0xFFF7F9FB),
-    surface2: Color(0xFFECEFF5),
-    surface3: Color(0xFFE1E6F0),
-    card: Color(0xB3FFFFFF),
-    primaryText: Color(0xFF0F172A),
-    secondaryText: Color(0xFF475569),
-    disabled: Color(0xFF767586),
-    accent: Color(0xFF4648D4),
-    secondaryAccent: Color(0xFF6D5BDD),
-    tertiary: Color(0xFF0C9A6D),
-    onAccent: Color(0xFFFFFFFF),
+    background: Color(0xFFF4E7D0),
+    surface: Color(0xFFF9EEDC),
+    surface2: Color(0xFFE9D5B8),
+    surface3: Color(0xFFD9B98D),
+    card: Color(0xCCFFF6E8),
+    primaryText: Color(0xFF090807),
+    secondaryText: Color(0xFF3D3329),
+    disabled: Color(0xFF776A5C),
+    accent: Color(0xFFC45A11),
+    secondaryAccent: Color(0xFF8F3208),
+    tertiary: Color(0xFF20735B),
+    onAccent: Color(0xFF090807),
     danger: Color(0xFFBA1A1A),
-    warning: Color(0xFFD97706),
+    warning: Color(0xFF9A4A05),
     dangerStrong: Color(0xFF93000A),
-    outline: Color(0x99FFFFFF),
-    outlineSubtle: Color(0x80E0E3E5),
-    gradientTop: Color(0xFFE1E0FF),
-    gradientBottom: Color(0xFFF7F9FB),
-    navBackground: Color(0xCCFFFFFF),
-    chipBackground: Color(0x66FFFFFF),
+    outline: Color(0x66906D45),
+    outlineSubtle: Color(0x40A9875C),
+    gradientTop: Color(0xFFFBECD3),
+    gradientBottom: Color(0xFFF4E7D0),
+    navBackground: Color(0xE6F5E7D2),
+    chipBackground: Color(0x99FFF6E8),
   );
 
   static SpaceColors of(BuildContext context) =>
@@ -187,43 +187,40 @@ class SpaceTypography {
     Color? color,
     FontWeight fontWeight = FontWeight.w700,
     double fontSize = 26,
-    double? letterSpacing = -0.4,
-  }) =>
-      TextStyle(
-        fontFamily: fontHeading,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        letterSpacing: letterSpacing,
-        color: color ?? const Color(0xFFF8FAFC),
-      );
+    double? letterSpacing = 0,
+  }) => TextStyle(
+    fontFamily: fontHeading,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    letterSpacing: letterSpacing,
+    color: color ?? const Color(0xFFF8FAFC),
+  );
 
   static TextStyle headingMedium({
     Color? color,
     FontWeight fontWeight = FontWeight.w700,
     double fontSize = 18,
-    double? letterSpacing = -0.2,
-  }) =>
-      TextStyle(
-        fontFamily: fontHeading,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        letterSpacing: letterSpacing,
-        color: color ?? const Color(0xFFF8FAFC),
-      );
+    double? letterSpacing = 0,
+  }) => TextStyle(
+    fontFamily: fontHeading,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    letterSpacing: letterSpacing,
+    color: color ?? const Color(0xFFF8FAFC),
+  );
 
   static TextStyle headingSmall({
     Color? color,
     FontWeight fontWeight = FontWeight.w600,
     double fontSize = 15,
     double? letterSpacing,
-  }) =>
-      TextStyle(
-        fontFamily: fontHeading,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        letterSpacing: letterSpacing,
-        color: color ?? const Color(0xFFF8FAFC),
-      );
+  }) => TextStyle(
+    fontFamily: fontHeading,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    letterSpacing: letterSpacing,
+    color: color ?? const Color(0xFFF8FAFC),
+  );
 
   static TextStyle bodyLarge({
     Color? color,
@@ -231,15 +228,14 @@ class SpaceTypography {
     double fontSize = 15,
     double height = 1.4,
     double? letterSpacing,
-  }) =>
-      TextStyle(
-        fontFamily: fontBody,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        height: height,
-        letterSpacing: letterSpacing,
-        color: color ?? const Color(0xFFF8FAFC),
-      );
+  }) => TextStyle(
+    fontFamily: fontBody,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    height: height,
+    letterSpacing: letterSpacing,
+    color: color ?? const Color(0xFFF8FAFC),
+  );
 
   static TextStyle bodyMedium({
     Color? color,
@@ -247,15 +243,14 @@ class SpaceTypography {
     double fontSize = 13,
     double height = 1.4,
     double? letterSpacing,
-  }) =>
-      TextStyle(
-        fontFamily: fontBody,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        height: height,
-        letterSpacing: letterSpacing,
-        color: color ?? const Color(0xFFA1AAB8),
-      );
+  }) => TextStyle(
+    fontFamily: fontBody,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    height: height,
+    letterSpacing: letterSpacing,
+    color: color ?? const Color(0xFFA1AAB8),
+  );
 
   static TextStyle bodySmall({
     Color? color,
@@ -263,29 +258,27 @@ class SpaceTypography {
     double fontSize = 12,
     double height = 1.3,
     double? letterSpacing,
-  }) =>
-      TextStyle(
-        fontFamily: fontBody,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        height: height,
-        letterSpacing: letterSpacing,
-        color: color ?? const Color(0xFF6B7280),
-      );
+  }) => TextStyle(
+    fontFamily: fontBody,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    height: height,
+    letterSpacing: letterSpacing,
+    color: color ?? const Color(0xFF6B7280),
+  );
 
   static TextStyle technical({
     Color? color,
     double fontSize = 11,
     FontWeight fontWeight = FontWeight.w600,
     double letterSpacing = 0.4,
-  }) =>
-      TextStyle(
-        fontFamily: fontMono,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        letterSpacing: letterSpacing,
-        color: color ?? const Color(0xFFA1AAB8),
-      );
+  }) => TextStyle(
+    fontFamily: fontMono,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    letterSpacing: letterSpacing,
+    color: color ?? const Color(0xFFA1AAB8),
+  );
 }
 
 ThemeData buildSpaceTheme(Brightness brightness) {
