@@ -686,14 +686,19 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                         ),
                       ),
                     ),
-                    if (widget.onToggleTheme != null)
+                    if (widget.onToggleTheme != null) ...[
+                      _SpaceIconButton(
+                        icon: Icons.shield_rounded,
+                        onPressed: () => _PrivacyPolicyScreen.show(context),
+                      ),
+                      const SizedBox(width: 8),
                       _SpaceIconButton(
                         icon: widget.isDark
                             ? Icons.light_mode_rounded
                             : Icons.dark_mode_rounded,
                         onPressed: widget.onToggleTheme,
-                      )
-                    else
+                      ),
+                    ] else
                       const SizedBox(width: 48),
                   ],
                 ),
@@ -1630,6 +1635,11 @@ class ChatScreenState extends State<ChatScreen> {
                         ],
                       ),
                     ),
+                    _SpaceIconButton(
+                      icon: Icons.shield_rounded,
+                      onPressed: () => _PrivacyPolicyScreen.show(context),
+                    ),
+                    const SizedBox(width: 8),
                     if (widget.onToggleTheme != null) ...[
                       _SpaceIconButton(
                         icon: widget.isDark
@@ -1948,6 +1958,19 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                   ? Icons.light_mode_rounded
                   : Icons.dark_mode_rounded,
               onTrailing: widget.onToggleTheme,
+              trailingActions: [
+                _SpaceIconButton(
+                  icon: Icons.shield_rounded,
+                  onPressed: () => _PrivacyPolicyScreen.show(context),
+                ),
+                const SizedBox(width: 8),
+                _SpaceIconButton(
+                  icon: widget.isDark
+                      ? Icons.light_mode_rounded
+                      : Icons.dark_mode_rounded,
+                  onPressed: widget.onToggleTheme,
+                ),
+              ],
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 32, 24, 20),
@@ -2422,6 +2445,19 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                   ? Icons.light_mode_rounded
                   : Icons.dark_mode_rounded,
               onTrailing: widget.onToggleTheme,
+              trailingActions: [
+                _SpaceIconButton(
+                  icon: Icons.shield_rounded,
+                  onPressed: () => _PrivacyPolicyScreen.show(context),
+                ),
+                const SizedBox(width: 8),
+                _SpaceIconButton(
+                  icon: widget.isDark
+                      ? Icons.light_mode_rounded
+                      : Icons.dark_mode_rounded,
+                  onPressed: widget.onToggleTheme,
+                ),
+              ],
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 32, 24, 20),
@@ -2579,6 +2615,7 @@ class _SpaceTopBar extends StatelessWidget {
     required this.onLeading,
     required this.trailingIcon,
     required this.onTrailing,
+    this.trailingActions,
   });
 
   final String centerTitle;
@@ -2586,6 +2623,7 @@ class _SpaceTopBar extends StatelessWidget {
   final VoidCallback? onLeading;
   final IconData trailingIcon;
   final VoidCallback? onTrailing;
+  final List<Widget>? trailingActions;
 
   @override
   Widget build(BuildContext context) {
@@ -2612,7 +2650,246 @@ class _SpaceTopBar extends StatelessWidget {
               ),
             ),
           ),
-          _SpaceIconButton(icon: trailingIcon, onPressed: onTrailing),
+          ...?trailingActions,
+          if (trailingActions == null)
+            _SpaceIconButton(icon: trailingIcon, onPressed: onTrailing),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrivacyPolicyScreen extends StatelessWidget {
+  const _PrivacyPolicyScreen();
+
+  static void show(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const _PrivacyPolicyScreen(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return SpaceScaffold(
+      child: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: colors.background,
+                border: Border(bottom: BorderSide(color: colors.divider)),
+              ),
+              child: Row(
+                children: [
+                  _SpaceIconButton(
+                    icon: Icons.arrow_back_rounded,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Privacy Policy',
+                      textAlign: TextAlign.center,
+                      style: SpaceTypography.headingMedium(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: colors.accent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 40),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your privacy matters. Space is built to be anonymous by design.',
+                      style: SpaceTypography.bodyMedium(
+                        color: colors.secondaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    _SectionHeader(
+                      title: 'Identity',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.person_off_rounded,
+                      title: 'No personal data collected',
+                      body:
+                          'Space never asks for your name, phone number, email, or contacts. There is nothing to tie your identity to you.',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.fingerprint_rounded,
+                      title: 'Device-bound authentication',
+                      body:
+                          'Your device generates a random ID on first launch. The server stores only a cryptographic hash of it — never the raw value.',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.vpn_key_rounded,
+                      title: 'Secure token storage',
+                      body:
+                          'Login tokens are stored in your device\'s encrypted secure storage and never leave your device.',
+                      colors: colors,
+                    ),
+                    const SizedBox(height: 28),
+                    _SectionHeader(
+                      title: 'Location',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.map_rounded,
+                      title: 'Location used only for geofencing',
+                      body:
+                          'GPS coordinates are checked against a Space\'s boundary to verify you are nearby. Location is never used for tracking or profiling.',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.timelapse_rounded,
+                      title: 'Exact GPS deleted after 10 minutes',
+                      body:
+                          'Precise coordinates are kept briefly for accuracy checks, then permanently deleted. Only coarse, anonymized audit data remains.',
+                      colors: colors,
+                    ),
+                    const SizedBox(height: 28),
+                    _SectionHeader(
+                      title: 'Messages & Safety',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.visibility_rounded,
+                      title: 'Messages stay within your Space',
+                      body:
+                          'Chat messages are only visible to people currently inside the same geofenced Space.',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.shield_rounded,
+                      title: 'Automated safety screening',
+                      body:
+                          'Messages are checked for severe safety violations. Content that risks harm may be hidden and reviewed.',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.flag_rounded,
+                      title: 'Reports reviewed manually',
+                      body:
+                          'If you report a message, it is reviewed by a human for safety action. No automated bans are issued.',
+                      colors: colors,
+                    ),
+                    const SizedBox(height: 28),
+                    _SectionHeader(
+                      title: 'No Tracking',
+                      colors: colors,
+                    ),
+                    _PolicyItem(
+                      icon: Icons.block_rounded,
+                      title: 'No ads, no analytics, no tracking',
+                      body:
+                          'Space uses no advertising SDKs, no analytics trackers, and sells no data to third parties.',
+                      colors: colors,
+                    ),
+
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, required this.colors});
+
+  final String title;
+  final SpaceColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Text(
+        title,
+        style: SpaceTypography.headingMedium(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: colors.accent,
+        ),
+      ),
+    );
+  }
+}
+
+class _PolicyItem extends StatelessWidget {
+  const _PolicyItem({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.colors,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final SpaceColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: colors.surface2,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colors.divider),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 18, color: colors.accent),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: SpaceTypography.bodyMedium(
+                    color: colors.primaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  body,
+                  style: SpaceTypography.bodySmall(
+                    color: colors.secondaryText,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
