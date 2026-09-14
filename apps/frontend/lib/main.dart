@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,8 +23,8 @@ void main() {
 }
 
 String get defaultApiBaseUrl => AppConfig.apiBaseUrl;
-const _discoveryHeaderOrbitSize = 104.0;
-const _mySpacesHeaderOrbitSize = 86.0;
+const _discoveryHeaderOrbitSize = 56.0;
+const _mySpacesHeaderOrbitSize = 48.0;
 
 class SpaceApp extends StatefulWidget {
   const SpaceApp({super.key});
@@ -134,9 +133,15 @@ class _AppLoaderState extends State<AppLoader> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.cloud_off_rounded, size: 48, color: colors.disabled),
+                Icon(Icons.cloud_off_rounded, size: 44, color: colors.muted),
                 const SizedBox(height: 16),
-                Text(_error!, style: TextStyle(color: colors.secondaryText)),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: SpaceTypography.bodyMedium(
+                    color: colors.secondaryText,
+                  ),
+                ),
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   onPressed: () {
@@ -146,19 +151,8 @@ class _AppLoaderState extends State<AppLoader> {
                     });
                     _init();
                   },
-                  icon: const Icon(Icons.refresh_rounded),
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
                   label: const Text('Retry'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colors.accent,
-                    foregroundColor: colors.onAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -283,13 +277,6 @@ class _SpaceShellState extends State<SpaceShell> {
               Navigator.of(ctx).pop();
               _onGeofenceExit();
             },
-            style: FilledButton.styleFrom(
-              backgroundColor: colors.accent,
-              foregroundColor: colors.onAccent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
             child: const Text('OK'),
           ),
         ],
@@ -350,66 +337,37 @@ class _SpaceShellState extends State<SpaceShell> {
               onToggleTheme: widget.onToggleTheme,
               isDark: widget.isDark,
             ),
-      bottomNavigationBar: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            decoration: BoxDecoration(
-              color: colors.navBackground,
-              border: Border(top: BorderSide(color: colors.outline)),
-              boxShadow: [
-                BoxShadow(
-                  color: colors.accent.withValues(alpha: 0.08),
-                  blurRadius: 24,
-                  offset: const Offset(0, -6),
-                ),
-              ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: colors.navBackground,
+          border: Border(top: BorderSide(color: colors.divider)),
+        ),
+        child: NavigationBar(
+          selectedIndex: selectedIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              _screen = index == 0
+                  ? AppScreen.discovery
+                  : AppScreen.mySpaces;
+            });
+          },
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          indicatorColor: colors.accent.withValues(alpha: 0.16),
+          height: 68,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.explore_outlined, size: 24),
+              selectedIcon: Icon(Icons.explore_rounded, size: 24, color: colors.accent),
+              label: 'Discovery',
             ),
-            child: NavigationBar(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: (index) {
-                setState(() {
-                  _screen = index == 0
-                      ? AppScreen.discovery
-                      : AppScreen.mySpaces;
-                });
-              },
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              indicatorColor: colors.accent.withValues(alpha: 0.20),
-              height: 76,
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-              destinations: [
-                NavigationDestination(
-                  icon: Icon(
-                    Icons.explore_outlined,
-                    color: colors.secondaryText,
-                    size: 23,
-                  ),
-                  selectedIcon: Icon(
-                    Icons.explore_rounded,
-                    color: colors.accent,
-                    size: 23,
-                  ),
-                  label: 'Discovery',
-                ),
-                NavigationDestination(
-                  icon: Icon(
-                    Icons.layers_outlined,
-                    color: colors.secondaryText,
-                    size: 23,
-                  ),
-                  selectedIcon: Icon(
-                    Icons.layers_rounded,
-                    color: colors.accent,
-                    size: 23,
-                  ),
-                  label: 'My Spaces',
-                ),
-              ],
+            NavigationDestination(
+              icon: const Icon(Icons.layers_outlined, size: 24),
+              selectedIcon: Icon(Icons.layers_rounded, size: 24, color: colors.accent),
+              label: 'My Spaces',
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -705,7 +663,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
               children: [
                 Row(
                   children: [
-                    _GlassIconButton(
+                    _SpaceIconButton(
                       icon: Icons.close_rounded,
                       onPressed: () => Navigator.of(context).pop(),
                     ),
@@ -714,16 +672,15 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                       child: Text(
                         'Create Space',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: 'Montserrat',
-                          fontSize: 24,
+                        style: SpaceTypography.headingMedium(
+                          fontSize: 20,
                           fontWeight: FontWeight.w700,
                           color: colors.accent,
                         ),
                       ),
                     ),
                     if (widget.onToggleTheme != null)
-                      _GlassIconButton(
+                      _SpaceIconButton(
                         icon: widget.isDark
                             ? Icons.light_mode_rounded
                             : Icons.dark_mode_rounded,
@@ -733,7 +690,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                       const SizedBox(width: 48),
                   ],
                 ),
-                const SizedBox(height: 34),
+                const SizedBox(height: 20),
                 StepCard(
                   step: '1. Identity',
                   title: 'Space Name',
@@ -781,15 +738,14 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                     ],
                   ),
                 ),
-                const SizedBox(height: 34),
+                const SizedBox(height: 28),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         '2. Geofence',
-                        style: TextStyle(
-                          fontFamily: 'Montserrat',
-                          fontSize: 23,
+                        style: SpaceTypography.headingMedium(
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
                           color: colors.primaryText,
                         ),
@@ -799,24 +755,12 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                       validation: validation,
                       compact: true,
                     ),
-                    if (widget.onToggleTheme != null)
-                      IconButton(
-                        onPressed: widget.onToggleTheme,
-                        icon: Icon(
-                          widget.isDark
-                              ? Icons.light_mode_rounded
-                              : Icons.dark_mode_rounded,
-                          color: colors.secondaryText,
-                          size: 20,
-                        ),
-                        tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
-                      ),
                   ],
                 ),
                 const SizedBox(height: 14),
-                _GlassPanel(
+                _SpacePanel(
                   padding: EdgeInsets.zero,
-                  borderRadius: 28,
+                  borderRadius: 16,
                   child: Column(
                     children: [
                       InteractiveGeofenceMap(
@@ -849,7 +793,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                                   ),
                                 ),
                                 const Spacer(),
-                                _GlassChip(
+                                _SpaceChip(
                                   icon: Icons.radio_button_checked_rounded,
                                   label: '${_radius.round()}m',
                                   accent: colors.accent,
@@ -864,7 +808,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                                   CircleGeofence.maxRadiusMeters -
                                   CircleGeofence.minRadiusMeters,
                               activeColor: colors.accent,
-                              inactiveColor: colors.outlineSubtle,
+                              inactiveColor: colors.divider,
                               onChanged: (value) =>
                                   setState(() => _radius = value),
                             ),
@@ -874,14 +818,14 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                                 Text(
                                   '${CircleGeofence.minRadiusMeters}m',
                                   style: TextStyle(
-                                    color: colors.disabled,
+                                    color: colors.muted,
                                     fontSize: 12,
                                   ),
                                 ),
                                 Text(
                                   '${CircleGeofence.maxRadiusMeters}m',
                                   style: TextStyle(
-                                    color: colors.disabled,
+                                    color: colors.muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1031,7 +975,7 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
             onPressed: () => Navigator.of(context).pop(),
             style: FilledButton.styleFrom(
               backgroundColor: colors.accent,
-              foregroundColor: colors.onAccent,
+              foregroundColor: colors.onPrimary,
             ),
             child: const Text('Enter Space'),
           ),
@@ -1073,9 +1017,11 @@ class ChatScreen extends StatefulWidget {
 
 class ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
+  final _scrollController = ScrollController();
   final _messages = <ChatMessage>[];
   final _messageIds = <String>{};
   bool _loadingMessages = true;
+  double _lastViewInsetsBottom = 0;
   ChatMessage? _replyingTo;
   late final ChatSocket _socket;
 
@@ -1097,8 +1043,32 @@ class ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.dispose();
     if (widget.socket == null) _socket.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    if (bottom > _lastViewInsetsBottom) _scrollToBottom();
+    _lastViewInsetsBottom = bottom;
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (position.minScrollExtent == position.maxScrollExtent) return;
+      if (position.pixels > position.minScrollExtent + 1) {
+        _scrollController.animateTo(
+          position.minScrollExtent,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
   }
 
   void _onWsEvent(WsEvent event) {
@@ -1134,6 +1104,7 @@ class ChatScreenState extends State<ChatScreen> {
         ),
       );
     });
+    _scrollToBottom();
   }
 
   void _onReaction(String messageId, String emoji, int count) {
@@ -1190,6 +1161,7 @@ class ChatScreenState extends State<ChatScreen> {
         }
         _loadingMessages = false;
       });
+      _scrollToBottom();
     } catch (_) {
       if (mounted) setState(() => _loadingMessages = false);
     }
@@ -1396,7 +1368,7 @@ class ChatScreenState extends State<ChatScreen> {
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: FilledButton.styleFrom(
               backgroundColor: colors.danger,
-              foregroundColor: colors.onAccent,
+              foregroundColor: colors.onPrimary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -1520,93 +1492,73 @@ class ChatScreenState extends State<ChatScreen> {
             // Top Header: Globe (Left) • Space Name & Alias (Center) • Actions (Right)
             SafeArea(
               bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: _GlassPanel(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 8,
-                  ),
-                  borderRadius: 24,
-                  child: Row(
-                    children: [
-                      if (widget.onBack != null)
-                        _GlassIconButton(
-                          icon: Icons.arrow_back_rounded,
-                          onPressed: widget.onBack,
-                        ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Space',
-                              style: TextStyle(
-                                fontFamily: 'Montserrat',
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                color: colors.accent,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    widget.space.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: colors.secondaryText,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                StatusDot(color: colors.accent),
-                                const SizedBox(width: 5),
-                                Flexible(
-                                  child: Text(
-                                    widget.anonymousName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: colors.disabled,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Alias: ${widget.anonymousName}',
-                              style: SpaceTypography.technical(
-                                color: colors.tertiary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
+              child: Container(
+                height: 56,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: colors.background,
+                  border: Border(bottom: BorderSide(color: colors.divider)),
+                ),
+                child: Row(
+                  children: [
+                    if (widget.onBack != null) ...[
+                      _SpaceIconButton(
+                        icon: Icons.arrow_back_rounded,
+                        onPressed: widget.onBack,
                       ),
-                      if (widget.onToggleTheme != null)
-                        _GlassIconButton(
-                          icon: widget.isDark
-                              ? Icons.light_mode_rounded
-                              : Icons.dark_mode_rounded,
-                          onPressed: widget.onToggleTheme,
-                        ),
-                      _GlassIconButton(
-                        icon: Icons.more_vert_rounded,
-                        onPressed: widget.onLeave,
-                        foregroundColor: colors.danger,
-                      ),
+                      const SizedBox(width: 4),
                     ],
-                  ),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.space.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: SpaceTypography.headingSmall(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: colors.primaryText,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              StatusDot(color: colors.accent),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '@${widget.anonymousName}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: SpaceTypography.caption(
+                                    fontSize: 11,
+                                    color: colors.muted,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (widget.onToggleTheme != null) ...[
+                      _SpaceIconButton(
+                        icon: widget.isDark
+                            ? Icons.light_mode_rounded
+                            : Icons.dark_mode_rounded,
+                        onPressed: widget.onToggleTheme,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    _SpaceIconButton(
+                      icon: Icons.more_vert_rounded,
+                      onPressed: widget.onLeave,
+                      foregroundColor: colors.danger,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1624,14 +1576,18 @@ class ChatScreenState extends State<ChatScreen> {
                       onAction: null,
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                      controller: _scrollController,
+                      reverse: true,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                       itemCount: _messages.length + 1,
                       itemBuilder: (context, index) {
-                        if (index == 0) {
+                        if (index == _messages.length) {
                           return Center(
                             child: Padding(
-                              padding: const EdgeInsets.only(bottom: 18),
-                              child: _GlassChip(
+                              padding: const EdgeInsets.only(top: 18),
+                              child: _SpaceChip(
                                 icon: Icons.today_rounded,
                                 label: 'Today',
                                 accent: colors.secondaryText,
@@ -1639,7 +1595,8 @@ class ChatScreenState extends State<ChatScreen> {
                             ),
                           );
                         }
-                        final message = _messages[index - 1];
+                        final message =
+                            _messages[_messages.length - 1 - index];
                         return MessageCard(
                           message: message,
                           isMine: message.name == widget.anonymousName,
@@ -1770,7 +1727,7 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
           style: SpaceTypography.bodyLarge(color: colors.primaryText),
           decoration: InputDecoration(
             hintText: 'ABCD1234',
-            hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
+            hintStyle: SpaceTypography.bodyMedium(color: colors.muted),
           ),
         ),
         actions: [
@@ -1788,7 +1745,7 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
             },
             style: FilledButton.styleFrom(
               backgroundColor: colors.accent,
-              foregroundColor: colors.onAccent,
+              foregroundColor: colors.onPrimary,
             ),
             child: const Text('Join'),
           ),
@@ -1904,44 +1861,57 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
-                        child: Text.rich(
-                          TextSpan(
-                            text: '$_greeting\n',
-                            children: [
-                              TextSpan(
-                                text: 'Explorer.',
-                                style: TextStyle(color: colors.accent),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _greeting,
+                              style: SpaceTypography.bodySmall(
+                                color: colors.muted,
                               ),
-                            ],
-                          ),
-                          style: TextStyle(
-                            fontFamily: 'Montserrat',
-                            fontSize: 32,
-                            height: 1.15,
-                            fontWeight: FontWeight.w800,
-                            color: colors.primaryText,
-                          ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Discover',
+                              style: SpaceTypography.headingLarge(
+                                color: colors.primaryText,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Spaces around you',
+                              style: SpaceTypography.bodySmall(
+                                color: colors.secondaryText,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 12),
                       const OrbitAnimation(size: _discoveryHeaderOrbitSize),
                     ],
                   ),
-                  const SizedBox(height: 18),
-                  _GlassChip(
-                    icon: Icons.my_location_rounded,
-                    label:
-                        '${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(4)}',
-                    accent: colors.accent,
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _SpaceButton(
-                      label: 'Join with Invite',
-                      icon: Icons.vpn_key_rounded,
-                      onPressed: _showInviteJoinDialog,
-                    ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SpaceChip(
+                          icon: Icons.my_location_rounded,
+                          label:
+                              '${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(4)}',
+                          accent: colors.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        onPressed: _showInviteJoinDialog,
+                        icon: const Icon(Icons.vpn_key_rounded, size: 18),
+                        label: const Text('Invite'),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1989,13 +1959,6 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                           onPressed: _discover,
                           icon: const Icon(Icons.refresh_rounded, size: 18),
                           label: const Text('Retry'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: colors.accent,
-                            foregroundColor: colors.onAccent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
                         ),
                       ],
                     ),
@@ -2038,14 +2001,52 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                             : constraints.maxWidth >= 620
                             ? 2
                             : 1;
+                        if (columns == 1) {
+                          return ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(24, 8, 24, 96),
+                            itemCount: _spaces.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final space = _spaces[index];
+                              return TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: Duration(
+                                  milliseconds:
+                                      220 + (index * 45).clamp(0, 320),
+                                ),
+                                builder: (context, value, child) {
+                                  return Opacity(
+                                    opacity: value,
+                                    child: Transform.translate(
+                                      offset: Offset(0, (1 - value) * 14),
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: _SpaceCard(
+                                  name: space.name,
+                                  description: space.description,
+                                  distance: space.distanceMeters,
+                                  memberCount: space.memberCount,
+                                  joined: space.joined,
+                                  loading: _joiningId == space.id,
+                                  onTap: _joiningId == null
+                                      ? () => _join(space)
+                                      : null,
+                                ),
+                              );
+                            },
+                          );
+                        }
                         return GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 112),
+                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 96),
                           gridDelegate:
                               SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: columns,
                                 crossAxisSpacing: 18,
                                 mainAxisSpacing: 18,
-                                childAspectRatio: columns == 1 ? 1.06 : 0.88,
+                                childAspectRatio: 1.05,
                               ),
                           itemCount: _spaces.length,
                           itemBuilder: (context, index) {
@@ -2053,7 +2054,8 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                             return TweenAnimationBuilder<double>(
                               tween: Tween(begin: 0.0, end: 1.0),
                               duration: Duration(
-                                milliseconds: 220 + (index * 45).clamp(0, 320),
+                                milliseconds:
+                                    220 + (index * 45).clamp(0, 320),
                               ),
                               builder: (context, value, child) {
                                 return Opacity(
@@ -2070,6 +2072,7 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                                 distance: space.distanceMeters,
                                 memberCount: space.memberCount,
                                 joined: space.joined,
+                                compact: true,
                                 loading: _joiningId == space.id,
                                 onTap: _joiningId == null
                                     ? () => _join(space)
@@ -2083,7 +2086,8 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                     Positioned(
                       right: 24,
                       bottom: 22,
-                      child: _GradientFab(
+                      child: _SpaceFab(
+                        label: 'New Space',
                         icon: Icons.add_rounded,
                         onPressed: widget.onCreateSpace,
                       ),
@@ -2214,7 +2218,7 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
             onPressed: () => Navigator.of(context).pop(true),
             style: FilledButton.styleFrom(
               backgroundColor: colors.danger,
-              foregroundColor: colors.onAccent,
+              foregroundColor: colors.onPrimary,
             ),
             child: const Text('Leave'),
           ),
@@ -2283,7 +2287,7 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
               onPressed: () => Navigator.of(context).pop(),
               style: FilledButton.styleFrom(
                 backgroundColor: colors.accent,
-                foregroundColor: colors.onAccent,
+                foregroundColor: colors.onPrimary,
               ),
               child: const Text('Done'),
             ),
@@ -2334,11 +2338,7 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                       Expanded(
                         child: Text(
                           'My Spaces',
-                          style: TextStyle(
-                            fontFamily: 'Montserrat',
-                            fontSize: 32,
-                            height: 1.15,
-                            fontWeight: FontWeight.w800,
+                          style: SpaceTypography.headingLarge(
                             color: colors.primaryText,
                           ),
                         ),
@@ -2348,7 +2348,7 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _GlassChip(
+                  _SpaceChip(
                     icon: Icons.layers_rounded,
                     label:
                         '${_ownedIds.length} created / ${_joinedIds.length} joined',
@@ -2404,13 +2404,41 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                         : constraints.maxWidth >= 620
                         ? 2
                         : 1;
+                    if (columns == 1) {
+                      return ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 96),
+                        itemCount: _spaces.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final space = _spaces[index];
+                          return _SpaceCard(
+                            name: space.name,
+                            description: space.description,
+                            memberCount: space.memberCount,
+                            joined: _joinedIds.contains(space.id),
+                            owned: _ownedIds.contains(space.id),
+                            loading: _openingId == space.id ||
+                                _leavingId == space.id,
+                            onInvite: space.visibility == 'private'
+                                ? () => _showInviteCode(space)
+                                : null,
+                            onLeave: _joinedIds.contains(space.id)
+                                ? () => _leave(space)
+                                : null,
+                            onTap: _openingId == null && _leavingId == null
+                                ? () => _open(space)
+                                : null,
+                          );
+                        },
+                      );
+                    }
                     return GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 112),
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 96),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: columns,
                         crossAxisSpacing: 18,
                         mainAxisSpacing: 18,
-                        childAspectRatio: columns == 1 ? 1.06 : 0.88,
+                        childAspectRatio: 1.05,
                       ),
                       itemCount: _spaces.length,
                       itemBuilder: (context, index) {
@@ -2421,8 +2449,9 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                           memberCount: space.memberCount,
                           joined: _joinedIds.contains(space.id),
                           owned: _ownedIds.contains(space.id),
-                          loading:
-                              _openingId == space.id || _leavingId == space.id,
+                          compact: true,
+                          loading: _openingId == space.id ||
+                              _leavingId == space.id,
                           onInvite: space.visibility == 'private'
                               ? () => _showInviteCode(space)
                               : null,
@@ -2465,83 +2494,64 @@ class _SpaceTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
 
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          height: 64,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          decoration: BoxDecoration(
-            color: colors.surface.withValues(alpha: 0.58),
-            border: Border(bottom: BorderSide(color: colors.outline)),
-          ),
-          child: Row(
-            children: [
-              _GlassIconButton(icon: leadingIcon, onPressed: onLeading),
-              Expanded(
-                child: Text(
-                  centerTitle,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Montserrat',
-                    fontSize: 31,
-                    fontWeight: FontWeight.w800,
-                    color: colors.accent,
-                  ),
-                ),
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: colors.background,
+        border: Border(bottom: BorderSide(color: colors.divider)),
+      ),
+      child: Row(
+        children: [
+          _SpaceIconButton(icon: leadingIcon, onPressed: onLeading),
+          Expanded(
+            child: Text(
+              centerTitle,
+              textAlign: TextAlign.center,
+              style: SpaceTypography.headingMedium(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: colors.accent,
               ),
-              _GlassIconButton(icon: trailingIcon, onPressed: onTrailing),
-            ],
+            ),
           ),
-        ),
+          _SpaceIconButton(icon: trailingIcon, onPressed: onTrailing),
+        ],
       ),
     );
   }
 }
 
-class _GlassPanel extends StatelessWidget {
-  const _GlassPanel({
+class _SpacePanel extends StatelessWidget {
+  const _SpacePanel({
     required this.child,
-    this.padding = const EdgeInsets.all(18),
-    this.borderRadius = 24,
+    this.padding = const EdgeInsets.all(16),
+    this.borderRadius = 16,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double borderRadius;
 
+  /// A solid, bordered surface. Used sparingly for meaningful grouping.
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: isDark
-                ? colors.card.withValues(alpha: 0.62)
-                : Colors.white.withValues(alpha: 0.46),
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.08)
-                  : Colors.white.withValues(alpha: 0.82),
-            ),
-          ),
-          child: child,
-        ),
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: colors.divider),
       ),
+      child: child,
     );
   }
 }
 
-class _GlassIconButton extends StatelessWidget {
-  const _GlassIconButton({
+class _SpaceIconButton extends StatelessWidget {
+  const _SpaceIconButton({
     required this.icon,
     required this.onPressed,
     this.foregroundColor,
@@ -2556,61 +2566,62 @@ class _GlassIconButton extends StatelessWidget {
     final colors = SpaceColors.of(context);
 
     return SizedBox(
-      width: 44,
-      height: 44,
+      width: 40,
+      height: 40,
       child: IconButton(
         onPressed: onPressed,
+        padding: EdgeInsets.zero,
         style: IconButton.styleFrom(
-          backgroundColor: colors.chipBackground,
-          disabledBackgroundColor: colors.chipBackground,
-          foregroundColor: foregroundColor ?? colors.accent,
-          disabledForegroundColor: colors.disabled,
+          backgroundColor: colors.surface2,
+          foregroundColor: foregroundColor ?? colors.secondaryText,
+          disabledForegroundColor: colors.muted,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(999),
-            side: BorderSide(color: colors.outline),
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: colors.divider),
           ),
         ),
-        icon: Icon(icon, size: 21),
+        icon: Icon(icon, size: 20),
       ),
     );
   }
 }
 
-class _GlassChip extends StatelessWidget {
-  const _GlassChip({required this.label, required this.accent, this.icon});
+class _SpaceChip extends StatelessWidget {
+  const _SpaceChip({required this.label, required this.accent, this.icon});
 
   final String label;
   final Color accent;
   final IconData? icon;
 
+  /// Compact status/tag chip for metadata.
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: colors.chipBackground,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: colors.outline),
+        color: colors.surface2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.divider),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
             Icon(icon, size: 14, color: accent),
-            const SizedBox(width: 7),
+            const SizedBox(width: 6),
           ],
           Flexible(
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: SpaceTypography.caption(
                 color: accent,
                 fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.7,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
               ),
             ),
           ),
@@ -2620,9 +2631,14 @@ class _GlassChip extends StatelessWidget {
   }
 }
 
-class _GradientFab extends StatelessWidget {
-  const _GradientFab({required this.icon, required this.onPressed});
+class _SpaceFab extends StatelessWidget {
+  const _SpaceFab({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
 
+  final String label;
   final IconData icon;
   final VoidCallback onPressed;
 
@@ -2630,27 +2646,30 @@ class _GradientFab extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
 
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            colors: [colors.accent, colors.secondaryAccent],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return Material(
+      color: colors.primary,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 22, color: colors.onPrimary),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: colors.onPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: colors.secondaryAccent.withValues(alpha: 0.36),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
         ),
-        child: Icon(icon, color: colors.onAccent, size: 31),
       ),
     );
   }
@@ -2681,31 +2700,27 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _GlassPanel(
-              borderRadius: 999,
-              padding: const EdgeInsets.all(22),
-              child: Icon(icon, size: 42, color: colors.accent),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: colors.surface2,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: colors.divider),
+              ),
+              child: Icon(icon, size: 26, color: colors.secondaryText),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'Montserrat',
-                color: colors.primaryText,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
+              style: SpaceTypography.headingSmall(color: colors.primaryText),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: colors.secondaryText,
-                fontSize: 14,
-                height: 1.35,
-              ),
+              style: SpaceTypography.bodyMedium(color: colors.secondaryText),
             ),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 20),
@@ -2716,24 +2731,7 @@ class _EmptyState extends StatelessWidget {
                   size: 16,
                   color: colors.accent,
                 ),
-                label: Text(
-                  actionLabel!,
-                  style: TextStyle(
-                    color: colors.primaryText,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: colors.outline),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
-                  ),
-                ),
+                label: Text(actionLabel!),
               ),
             ],
           ],
@@ -2757,41 +2755,30 @@ class _SpaceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        gradient: LinearGradient(
-          colors: [colors.accent, colors.secondaryAccent],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colors.accent.withValues(alpha: 0.28),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+    final enabled = onPressed != null;
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
       child: Material(
-        color: Colors.transparent,
+        color: colors.primary,
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(14),
           onTap: onPressed,
           child: Container(
-            height: 56,
+            height: 52,
             alignment: Alignment.center,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 20, color: colors.onAccent),
+                Icon(icon, size: 20, color: colors.onPrimary),
                 const SizedBox(width: 10),
                 Text(
                   label,
                   style: TextStyle(
-                    color: colors.onAccent,
+                    color: colors.onPrimary,
                     fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -2812,6 +2799,7 @@ class _SpaceCard extends StatelessWidget {
     this.joined = false,
     this.owned = false,
     this.loading = false,
+    this.compact = false,
     this.onInvite,
     this.onLeave,
     this.onTap,
@@ -2824,6 +2812,7 @@ class _SpaceCard extends StatelessWidget {
   final bool joined;
   final bool owned;
   final bool loading;
+  final bool compact;
   final VoidCallback? onInvite;
   final VoidCallback? onLeave;
   final VoidCallback? onTap;
@@ -2831,52 +2820,109 @@ class _SpaceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final icon = joined ? Icons.forum_rounded : _spaceIcon(name);
-    final activeColor = joined ? colors.secondaryAccent : colors.accent;
     final body = description?.trim();
+    final isPrivate = body == null;
+    final meta =
+        '${_formatDistance(distance)} · $memberCount ${memberCount == 1 ? 'member' : 'members'}';
+
+    final String status;
+    if (owned) {
+      status = 'Owner';
+    } else if (joined) {
+      status = 'Joined';
+    } else {
+      status = isPrivate ? 'Private' : 'Public';
+    }
 
     return Material(
-      color: Colors.transparent,
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: _GlassPanel(
-          borderRadius: 28,
-          padding: const EdgeInsets.all(20),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.divider),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [
-                          activeColor.withValues(alpha: 0.92),
-                          colors.secondaryAccent.withValues(alpha: 0.82),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: activeColor.withValues(alpha: 0.24),
-                          blurRadius: 18,
+                      color: colors.surface2,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      joined
+                          ? Icons.forum_rounded
+                          : isPrivate
+                          ? Icons.lock_rounded
+                          : Icons.public_rounded,
+                      size: 22,
+                      color: colors.accent,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: SpaceTypography.headingSmall(
+                            fontWeight: FontWeight.w700,
+                            color: colors.primaryText,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          meta,
+                          style: SpaceTypography.caption(
+                            fontSize: 12,
+                            color: colors.muted,
+                          ),
                         ),
                       ],
                     ),
-                    child: Icon(icon, color: colors.onAccent, size: 24),
                   ),
+                  const SizedBox(width: 8),
+                  _SpaceChip(
+                    label: status,
+                    accent: joined || owned
+                        ? colors.accent
+                        : colors.secondaryText,
+                  ),
+                ],
+              ),
+              if (body != null && body.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  body,
+                  maxLines: compact ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: SpaceTypography.bodySmall(
+                    color: colors.secondaryText,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
                   if (onInvite != null)
                     IconButton(
                       tooltip: 'Invite Code',
                       onPressed: onInvite,
                       icon: const Icon(Icons.vpn_key_rounded, size: 20),
-                      color: activeColor,
+                      color: colors.accent,
+                      visualDensity: VisualDensity.compact,
                     ),
                   if (onLeave != null)
                     IconButton(
@@ -2884,6 +2930,7 @@ class _SpaceCard extends StatelessWidget {
                       onPressed: onLeave,
                       icon: const Icon(Icons.logout_rounded, size: 20),
                       color: colors.danger,
+                      visualDensity: VisualDensity.compact,
                     ),
                   const Spacer(),
                   if (loading)
@@ -2895,93 +2942,31 @@ class _SpaceCard extends StatelessWidget {
                         color: colors.accent,
                       ),
                     )
+                  else if (joined || owned)
+                    OutlinedButton(
+                      onPressed: onTap,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 38),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        side: BorderSide(color: colors.divider),
+                        foregroundColor: colors.accent,
+                      ),
+                      child: const Text('Enter Space'),
+                    )
                   else
-                    _GlassChip(
-                      icon: joined
-                          ? Icons.check_circle_rounded
-                          : Icons.radar_rounded,
-                      label: owned
-                          ? 'Owner'
-                          : joined
-                          ? 'Joined'
-                          : _formatDistance(distance),
-                      accent: activeColor,
+                    FilledButton(
+                      onPressed: onTap,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(0, 38),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: const Text('Join'),
                     ),
                 ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'Montserrat',
-                  fontSize: 21,
-                  height: 1.12,
-                  fontWeight: FontWeight.w800,
-                  color: colors.primaryText,
-                ),
-              ),
-              if (body != null && body.isNotEmpty) ...[
-                const SizedBox(height: 7),
-                Text(
-                  body,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.secondaryText,
-                    fontSize: 14,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-              const Spacer(),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  _GlassChip(
-                    icon: Icons.people_alt_rounded,
-                    label: '$memberCount Active',
-                    accent: colors.secondaryText,
-                  ),
-                  _GlassChip(
-                    icon: Icons.public_rounded,
-                    label: owned
-                        ? 'Your Space'
-                        : joined
-                        ? 'Open Channel'
-                        : 'Nearby',
-                    accent: colors.secondaryText,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Container(
-                width: double.infinity,
-                height: 44,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: activeColor.withValues(alpha: 0.72),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: activeColor.withValues(alpha: 0.14),
-                      blurRadius: 16,
-                    ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  joined || owned ? 'Enter Space' : 'Join Sequence',
-                  style: TextStyle(
-                    color: activeColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                  ),
-                ),
               ),
             ],
           ),
@@ -2990,23 +2975,10 @@ class _SpaceCard extends StatelessWidget {
     );
   }
 
-  IconData _spaceIcon(String seed) {
-    final icons = [
-      Icons.terminal_rounded,
-      Icons.headphones_rounded,
-      Icons.local_cafe_rounded,
-      Icons.nightlife_rounded,
-      Icons.restaurant_rounded,
-      Icons.bolt_rounded,
-      Icons.blur_on_rounded,
-    ];
-    return icons[seed.hashCode.abs() % icons.length];
-  }
-
   String _formatDistance(double value) {
-    if (value <= 0) return 'In Range';
-    if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)}km';
-    return '${value.toStringAsFixed(0)}m';
+    if (value <= 0) return 'In range';
+    if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)} km';
+    return '${value.toStringAsFixed(0)} m';
   }
 }
 
@@ -3154,138 +3126,131 @@ class ChatComposer extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (replyingTo != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: _GlassPanel(
-                    borderRadius: 18,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 9,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.reply_rounded,
-                          size: 17,
-                          color: colors.accent,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Replying to ${replyingTo!.name}: '
-                            '${replyingTo!.text}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: colors.secondaryText,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colors.surface,
+          border: Border(top: BorderSide(color: colors.divider)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (replyingTo != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _SpacePanel(
+                  borderRadius: 12,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.reply_rounded,
+                        size: 17,
+                        color: colors.accent,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Replying to ${replyingTo!.name}: '
+                          '${replyingTo!.text}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: SpaceTypography.caption(
+                            color: colors.secondaryText,
                           ),
                         ),
-                        if (onCancelReply != null)
-                          GestureDetector(
-                            onTap: onCancelReply,
-                            child: Icon(
-                              Icons.close_rounded,
-                              size: 18,
-                              color: colors.disabled,
-                            ),
+                      ),
+                      if (onCancelReply != null)
+                        GestureDetector(
+                          onTap: onCancelReply,
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: colors.muted,
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
-              Container(
-                color: colors.surface.withValues(alpha: 0.78),
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: IconButton(
-                        tooltip: 'Chat options',
-                        onPressed: onAdd,
-                        icon: const Icon(Icons.add_circle_rounded),
-                        color: colors.secondaryText,
-                        iconSize: 28,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _GlassPanel(
-                        borderRadius: 28,
-                        padding: const EdgeInsets.fromLTRB(16, 2, 10, 2),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: controller,
-                                minLines: 1,
-                                maxLines: 4,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  color: colors.primaryText,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText:
-                                      'Message ${spaceName ?? 'Space'}...',
-                                  hintStyle: TextStyle(color: colors.disabled),
-                                  border: InputBorder.none,
-                                ),
-                                onSubmitted: (_) => onSend(),
-                              ),
-                            ),
-                            Icon(
-                              Icons.mood_rounded,
-                              size: 21,
-                              color: colors.disabled,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: onSend,
-                      child: Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            colors: [colors.accent, colors.secondaryAccent],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors.accent.withValues(alpha: 0.24),
-                              blurRadius: 20,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.send_rounded,
-                          color: colors.onAccent,
-                          size: 21,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ],
-          ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: IconButton(
+                      tooltip: 'Chat options',
+                      onPressed: onAdd,
+                      icon: const Icon(Icons.add_circle_rounded),
+                      color: colors.secondaryText,
+                      iconSize: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: colors.surface2,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: colors.divider),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(14, 2, 10, 2),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: controller,
+                              minLines: 1,
+                              maxLines: 4,
+                              style: SpaceTypography.bodyLarge(
+                                color: colors.primaryText,
+                              ),
+                              decoration: InputDecoration(
+                                hintText:
+                                    'Message ${spaceName ?? 'Space'}...',
+                                hintStyle: SpaceTypography.bodyMedium(
+                                  color: colors.muted,
+                                ),
+                                border: InputBorder.none,
+                              ),
+                              onSubmitted: (_) => onSend(),
+                            ),
+                          ),
+                          Icon(
+                            Icons.mood_rounded,
+                            size: 21,
+                            color: colors.muted,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: onSend,
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.send_rounded,
+                        color: colors.onPrimary,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -3350,7 +3315,7 @@ class MessageCard extends StatelessWidget {
                               Text(
                                 _formatMessageTime(message.createdAt!),
                                 style: TextStyle(
-                                  color: colors.disabled,
+                                  color: colors.muted,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -3360,28 +3325,13 @@ class MessageCard extends StatelessWidget {
                         ),
                       ),
                     Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         borderRadius: bubbleRadius,
-                        gradient: isMine
-                            ? LinearGradient(
-                                colors: [colors.accent, colors.secondaryAccent],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              )
-                            : null,
-                        color: isMine ? null : colors.card,
+                        color: isMine ? colors.primary : colors.surface,
                         border: isMine
                             ? null
-                            : Border.all(color: colors.outline),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (isMine ? colors.accent : Colors.black)
-                                .withValues(alpha: isMine ? 0.16 : 0.05),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
+                            : Border.all(color: colors.divider),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3395,16 +3345,16 @@ class MessageCard extends StatelessWidget {
                               ),
                               decoration: BoxDecoration(
                                 color: isMine
-                                    ? Colors.white.withValues(alpha: 0.16)
+                                    ? colors.onPrimary.withValues(alpha: 0.12)
                                     : colors.accent.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border(
                                   left: BorderSide(
-                                    color: isMine
-                                        ? Colors.white
-                                        : colors.accent,
-                                    width: 2,
-                                  ),
+color: isMine
+                                    ? colors.onPrimary.withValues(alpha: 0.72)
+                                    : colors.accent,
+                                width: 2,
+                              ),
                                 ),
                               ),
                               child: Text(
@@ -3413,7 +3363,7 @@ class MessageCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: isMine
-                                      ? Colors.white
+                                      ? colors.onPrimary
                                       : colors.secondaryText,
                                   fontSize: 12,
                                   height: 1.25,
@@ -3426,7 +3376,7 @@ class MessageCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 16,
                               height: 1.38,
-                              color: isMine ? Colors.white : colors.primaryText,
+                              color: isMine ? colors.onPrimary : colors.primaryText,
                             ),
                           ),
                           if (message.poll case final poll?) ...[
@@ -3440,15 +3390,15 @@ class MessageCard extends StatelessWidget {
                                       : () => onVote!(i),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: isMine
-                                        ? Colors.white
+                                        ? colors.onPrimary
                                         : colors.primaryText,
                                     disabledForegroundColor: isMine
-                                        ? Colors.white70
+                                        ? colors.onPrimary.withValues(alpha: 0.6)
                                         : colors.secondaryText,
                                     side: BorderSide(
                                       color: isMine
-                                          ? Colors.white54
-                                          : colors.outline,
+                                          ? colors.onPrimary.withValues(alpha: 0.40)
+                                          : colors.divider,
                                     ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(8),
@@ -3475,7 +3425,7 @@ class MessageCard extends StatelessWidget {
                               '${poll.total} ${poll.total == 1 ? 'vote' : 'votes'}',
                               style: TextStyle(
                                 color: isMine
-                                    ? Colors.white70
+                                    ? colors.onPrimary.withValues(alpha: 0.70)
                                     : colors.secondaryText,
                               ),
                             ),
@@ -3491,7 +3441,7 @@ class MessageCard extends StatelessWidget {
                         children: [
                           for (final entry in message.reactions.entries)
                             if (entry.value > 0)
-                              _GlassChip(
+                              _SpaceChip(
                                 label: '${entry.key} ${entry.value}',
                                 accent: colors.accent,
                               ),
@@ -3505,7 +3455,7 @@ class MessageCard extends StatelessWidget {
                         child: Text(
                           _formatMessageTime(message.createdAt!),
                           style: TextStyle(
-                            color: colors.disabled,
+                            color: colors.muted,
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
                           ),
@@ -3549,18 +3499,29 @@ class StepCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colors.outline),
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.divider),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(step, style: TextStyle(color: colors.disabled, fontSize: 12)),
-          const SizedBox(height: 5),
+          Text(
+            step,
+            style: SpaceTypography.caption(
+              fontSize: 11,
+              letterSpacing: 1,
+              fontWeight: FontWeight.w600,
+              color: colors.muted,
+            ),
+          ),
+          const SizedBox(height: 4),
           Text(
             title,
-            style: SpaceTypography.headingSmall(color: colors.primaryText),
+            style: SpaceTypography.headingSmall(
+              fontWeight: FontWeight.w700,
+              color: colors.primaryText,
+            ),
           ),
           const SizedBox(height: 14),
           child,
@@ -3601,7 +3562,7 @@ class SpaceTextField extends StatelessWidget {
       ),
       decoration: InputDecoration(
         hintText: hintText,
-        hintStyle: SpaceTypography.bodyMedium(color: colors.disabled),
+        hintStyle: SpaceTypography.bodyMedium(color: colors.muted),
         filled: true,
         fillColor: colors.surface2,
         contentPadding: const EdgeInsets.symmetric(
@@ -3609,16 +3570,16 @@ class SpaceTextField extends StatelessWidget {
           vertical: 14,
         ),
         border: OutlineInputBorder(
-          borderSide: BorderSide(color: colors.outline),
-          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colors.divider),
+          borderRadius: BorderRadius.circular(12),
         ),
         enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: colors.outline),
-          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colors.divider),
+          borderRadius: BorderRadius.circular(12),
         ),
         focusedBorder: OutlineInputBorder(
           borderSide: BorderSide(color: colors.accent, width: 1.5),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );
@@ -3643,42 +3604,47 @@ class ChoicePill extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: selected
-              ? colors.accent.withValues(alpha: 0.14)
-              : colors.chipBackground,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: selected ? colors.accent : colors.outline),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null)
-              Icon(
-                icon,
-                size: 18,
-                color: selected ? colors.accent : colors.secondaryText,
-              )
-            else
-              StatusDot(
-                color: selected ? colors.accent : colors.disabled,
-                hollow: !selected,
-              ),
-            const SizedBox(width: 9),
-            Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: selected ? colors.accent : colors.primaryText,
-              ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.accent.withValues(alpha: 0.10)
+                : colors.surface2,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? colors.accent : colors.divider,
+              width: selected ? 1.5 : 1,
             ),
-          ],
+          ),
+          child: Row(
+            children: [
+              if (icon != null)
+                Icon(
+                  icon,
+                  size: 20,
+                  color: selected ? colors.accent : colors.muted,
+                )
+              else
+                StatusDot(
+                  color: selected ? colors.accent : colors.muted,
+                  hollow: !selected,
+                ),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: SpaceTypography.bodyMedium(
+                  fontWeight: FontWeight.w600,
+                  color: selected ? colors.accent : colors.primaryText,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3701,9 +3667,9 @@ class GeofenceDecisionPanel extends StatelessWidget {
     final color = switch (validation.decision) {
       GeofenceDecision.inside => colors.tertiary,
       GeofenceDecision.nearBoundary => colors.warning,
-      GeofenceDecision.outside => colors.dangerStrong,
+      GeofenceDecision.outside => colors.danger,
       GeofenceDecision.lowAccuracy => colors.warning,
-      GeofenceDecision.rejected => colors.dangerStrong,
+      GeofenceDecision.rejected => colors.danger,
     };
     final label = switch (validation.decision) {
       GeofenceDecision.inside => 'Inside perimeter',
@@ -3714,42 +3680,44 @@ class GeofenceDecisionPanel extends StatelessWidget {
     };
 
     if (compact) {
-      return _GlassChip(icon: Icons.radar_rounded, label: label, accent: color);
+      return _SpaceChip(icon: Icons.radar_rounded, label: label, accent: color);
     }
 
     return SizedBox(
       width: double.infinity,
-      child: _GlassPanel(
-        padding: const EdgeInsets.all(16),
+      child: _SpacePanel(
+        padding: const EdgeInsets.all(14),
         child: Row(
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
                 color: color.withValues(alpha: 0.12),
-                border: Border.all(color: color.withValues(alpha: 0.3)),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color.withValues(alpha: 0.24)),
               ),
               child: Icon(Icons.radar_rounded, color: color, size: 20),
             ),
-            const SizedBox(width: 13),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
+                    style: SpaceTypography.bodyLarge(
+                      fontWeight: FontWeight.w700,
                       color: colors.primaryText,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     '${validation.distanceMeters.toStringAsFixed(1)}m from center',
-                    style: TextStyle(color: colors.secondaryText, fontSize: 12),
+                    style: SpaceTypography.caption(
+                      fontSize: 12,
+                      color: colors.secondaryText,
+                    ),
                   ),
                 ],
               ),
@@ -3778,55 +3746,48 @@ class SpaceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
+    final enabled = onPressed != null && !loading;
 
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        gradient: LinearGradient(
-          colors: [colors.accent, colors.secondaryAccent],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: Container(
+        decoration: BoxDecoration(
+          color: colors.primary,
+          borderRadius: BorderRadius.circular(14),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: colors.accent.withValues(alpha: 0.28),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: loading ? null : onPressed,
-          borderRadius: BorderRadius.circular(999),
-          child: Container(
-            height: 56,
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (loading)
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colors.onAccent,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? onPressed : null,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              height: 52,
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (loading)
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.onPrimary,
+                      ),
+                    )
+                  else
+                    Icon(icon, size: 20, color: colors.onPrimary),
+                  const SizedBox(width: 10),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: colors.onPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
-                  )
-                else
-                  Icon(icon, size: 20, color: colors.onAccent),
-                const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: colors.onAccent,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -3842,97 +3803,10 @@ class SpaceScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: DecoratedBox(
-        decoration: BoxDecoration(color: colors.background),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment.topRight,
-                    radius: 1.18,
-                    colors: [
-                      colors.gradientTop.withValues(alpha: isDark ? 0.92 : 0.7),
-                      colors.gradientBottom,
-                    ],
-                    stops: const [0, 0.62],
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment.centerLeft,
-                    radius: 1.08,
-                    colors: [
-                      colors.accent.withValues(alpha: isDark ? 0.07 : 0.10),
-                      Colors.transparent,
-                    ],
-                    stops: const [0, 0.48],
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _StarfieldPainter(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.16)
-                      : colors.accent.withValues(alpha: 0.10),
-                ),
-              ),
-            ),
-            Material(color: Colors.transparent, child: child),
-          ],
-        ),
-      ),
+      backgroundColor: SpaceColors.of(context).background,
+      body: child,
     );
-  }
-}
-
-class _StarfieldPainter extends CustomPainter {
-  const _StarfieldPainter({required this.color});
-
-  final Color color;
-
-  static const _stars = <Offset>[
-    Offset(0.08, 0.10),
-    Offset(0.18, 0.28),
-    Offset(0.31, 0.16),
-    Offset(0.43, 0.34),
-    Offset(0.58, 0.12),
-    Offset(0.72, 0.24),
-    Offset(0.86, 0.10),
-    Offset(0.92, 0.42),
-    Offset(0.13, 0.58),
-    Offset(0.37, 0.70),
-    Offset(0.67, 0.62),
-    Offset(0.82, 0.78),
-  ];
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    for (final star in _stars) {
-      canvas.drawCircle(
-        Offset(star.dx * size.width, star.dy * size.height),
-        1.1,
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _StarfieldPainter oldDelegate) {
-    return oldDelegate.color != color;
   }
 }
 
@@ -4027,7 +3901,7 @@ class _ReactionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: colors.surface2,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: colors.outline),
+          border: Border.all(color: colors.divider),
         ),
         child: Text(emoji, style: const TextStyle(fontSize: 19)),
       ),

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -242,57 +241,11 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: DecoratedBox(
-        decoration: BoxDecoration(color: colors.background),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: isDark
-                        ? [
-                            const Color(0xFF111827),
-                            colors.background,
-                            const Color(0xFF02040A),
-                          ]
-                        : [
-                            const Color(0xFFFFF1D9),
-                            colors.background,
-                            const Color(0xFFFFF6E8),
-                          ],
-                    stops: const [0, 0.56, 1],
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: const Alignment(0, 0.15),
-                      radius: 0.82,
-                      colors: [
-                        const Color(
-                          0xFFC0C1FF,
-                        ).withValues(alpha: isDark ? 0.10 : 0.30),
-                        Colors.transparent,
-                      ],
-                      stops: const [0, 1],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SafeArea(
-              child: LayoutBuilder(
+      body: SafeArea(
+        child: LayoutBuilder(
                 builder: (context, constraints) {
                   final veryCompact = constraints.maxHeight < 680;
                   final compact = constraints.maxHeight < 760;
@@ -321,10 +274,9 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
                               child: Text(
                                 'Space',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontFamily: 'Montserrat',
-                                  fontSize: 31,
-                                  fontWeight: FontWeight.w800,
+                                style: SpaceTypography.headingMedium(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
                                   color: colors.accent,
                                 ),
                               ),
@@ -401,9 +353,6 @@ class _LocationSelectionScreenState extends State<LocationSelectionScreen>
                   );
                 },
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -422,56 +371,10 @@ class _OrbitBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return DecoratedBox(
       decoration: BoxDecoration(color: colors.background),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: isDark
-                      ? [
-                          const Color(0xFF111827),
-                          colors.background,
-                          const Color(0xFF02040A),
-                        ]
-                      : [
-                          const Color(0xFFFFF1D9),
-                          colors.background,
-                          const Color(0xFFFFF6E8),
-                        ],
-                  stops: const [0, 0.56, 1],
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(0, 0.15),
-                    radius: 0.82,
-                    colors: [
-                      const Color(
-                        0xFFC0C1FF,
-                      ).withValues(alpha: isDark ? 0.10 : 0.30),
-                      Colors.transparent,
-                    ],
-                    stops: const [0, 1],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          child,
-        ],
-      ),
+      child: child,
     );
   }
 }
@@ -491,25 +394,19 @@ class _OrbitCopy extends StatelessWidget {
         Text(
           'Finding your orbit...',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: 'Montserrat',
-            fontSize: compact ? 28 : 32,
-            height: 1.16,
-            fontWeight: FontWeight.w800,
-            color: colors.accent,
+          style: SpaceTypography.headingLarge(
+            fontSize: compact ? 20 : 22,
+            color: colors.primaryText,
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 290),
           child: Text(
             'Connecting you to judgment-free spaces nearby.',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: SpaceTypography.bodyMedium(
               color: colors.secondaryText,
-              fontSize: compact ? 15 : 17,
-              height: 1.42,
-              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -539,7 +436,7 @@ class _LocationConfirmBar extends StatelessWidget {
 
     return _LocationGlassPanel(
       padding: const EdgeInsets.all(14),
-      borderRadius: 30,
+      borderRadius: 16,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -567,7 +464,7 @@ class _LocationConfirmBar extends StatelessWidget {
               error!,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: colors.dangerStrong,
+                color: colors.danger,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
@@ -589,7 +486,7 @@ class _LocationGlassPanel extends StatelessWidget {
   const _LocationGlassPanel({
     required this.child,
     this.padding = const EdgeInsets.all(24),
-    this.borderRadius = 32,
+    this.borderRadius = 16,
   });
 
   final Widget child;
@@ -599,25 +496,16 @@ class _LocationGlassPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = SpaceColors.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          width: double.infinity,
-          padding: padding,
-          decoration: BoxDecoration(
-            color: isDark
-                ? colors.surface.withValues(alpha: 0.62)
-                : Colors.white.withValues(alpha: 0.54),
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(color: colors.outline),
-          ),
-          child: child,
-        ),
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: colors.divider),
       ),
+      child: child,
     );
   }
 }
@@ -635,9 +523,9 @@ class _LocationMiniBadge extends StatelessWidget {
       width: 34,
       height: 34,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: colors.accent.withValues(alpha: 0.12),
-        border: Border.all(color: colors.accent.withValues(alpha: 0.22)),
+        color: colors.surface2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colors.divider),
       ),
       child: Icon(icon, color: colors.accent, size: 18),
     );
@@ -657,9 +545,9 @@ class _LocationGlassIcon extends StatelessWidget {
       width: 44,
       height: 44,
       decoration: BoxDecoration(
-        color: colors.chipBackground,
-        shape: BoxShape.circle,
-        border: Border.all(color: colors.outline),
+        color: colors.surface2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.divider),
       ),
       child: Icon(icon, color: colors.accent, size: 21),
     );
@@ -682,37 +570,27 @@ class _LocationPrimaryButton extends StatelessWidget {
     final colors = SpaceColors.of(context);
 
     return Opacity(
-      opacity: onPressed == null ? 0.45 : 1,
+      opacity: onPressed == null ? 0.5 : 1,
       child: GestureDetector(
         onTap: onPressed,
         child: Container(
-          height: 56,
+          height: 52,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            gradient: LinearGradient(
-              colors: [colors.accent, colors.secondaryAccent],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: colors.accent.withValues(alpha: 0.25),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            color: colors.primary,
+            borderRadius: BorderRadius.circular(14),
           ),
+          alignment: Alignment.center,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: colors.onAccent, size: 20),
+              Icon(icon, color: colors.onPrimary, size: 20),
               const SizedBox(width: 10),
               Text(
                 label,
                 style: TextStyle(
-                  color: colors.onAccent,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
+                  color: colors.onPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],

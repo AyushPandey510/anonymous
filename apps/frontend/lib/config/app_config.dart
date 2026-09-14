@@ -9,10 +9,10 @@ class AppConfig {
   // ===========================================================================
 
   /// 🟢 Set to `true` when running on Android EMULATOR
-  static const bool useEmulator = false;
+  static const bool useEmulator = true;
 
   /// 🟢 Set to `true` when running on PHYSICAL PHONE
-  static const bool usePhysicalDevice = true;
+  static const bool usePhysicalDevice = false;
 
   /// 🟢 Set to `true` when building PRODUCTION RELEASE APK
   static const bool useProduction = false;
