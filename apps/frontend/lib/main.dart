@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:space_mobile/features/location/data/location_service.dart';
 import 'package:space_mobile/features/location/domain/geofence.dart';
 import 'package:space_mobile/features/location/domain/geofence_validator.dart';
@@ -18,8 +19,10 @@ import 'package:space_mobile/services/chat_socket.dart';
 import 'package:space_mobile/config/app_config.dart';
 import 'package:space_mobile/theme.dart';
 
-void main() {
-  runApp(const SpaceApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final preferences = await SharedPreferences.getInstance();
+  runApp(SpaceApp(preferences: preferences));
 }
 
 String get defaultApiBaseUrl => AppConfig.apiBaseUrl;
@@ -27,33 +30,66 @@ const _discoveryHeaderOrbitSize = 56.0;
 const _mySpacesHeaderOrbitSize = 48.0;
 
 class SpaceApp extends StatefulWidget {
-  const SpaceApp({super.key});
+  const SpaceApp({super.key, this.preferences});
+
+  final SharedPreferences? preferences;
 
   @override
   State<SpaceApp> createState() => _SpaceAppState();
 }
 
 class _SpaceAppState extends State<SpaceApp> {
-  ThemeMode _themeMode = ThemeMode.dark;
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  late ThemeMode _themeMode;
 
-  void _toggleTheme() {
+  @override
+  void initState() {
+    super.initState();
+    final savedMode = widget.preferences?.getString('theme_mode');
+    // Follow the phone unless the user has chosen a theme in Settings.
+    _themeMode = ThemeMode.values.firstWhere(
+      (mode) => mode.name == savedMode,
+      orElse: () => ThemeMode.system,
+    );
+  }
+
+  void _setThemeMode(ThemeMode mode) {
     setState(() {
-      _themeMode = _themeMode == ThemeMode.dark
-          ? ThemeMode.light
-          : ThemeMode.dark;
+      _themeMode = mode;
     });
+    unawaited(_saveThemeMode(mode));
+  }
+
+  Future<void> _saveThemeMode(ThemeMode mode) async {
+    try {
+      await widget.preferences?.setString('theme_mode', mode.name);
+    } catch (_) {
+      debugPrint('[Space Settings] Could not save theme preference.');
+    }
+  }
+
+  void _openSettings() {
+    final context = _navigatorKey.currentContext!;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _SettingsScreen(
+          initialMode: _themeMode,
+          onThemeModeChanged: _setThemeMode,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = _themeMode == ThemeMode.dark;
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'Space',
       debugShowCheckedModeBanner: false,
       themeMode: _themeMode,
       theme: buildSpaceTheme(Brightness.light),
       darkTheme: buildSpaceTheme(Brightness.dark),
-      home: AppLoader(onToggleTheme: _toggleTheme, isDark: isDark),
+      home: AppLoader(onOpenSettings: _openSettings),
     );
   }
 }
@@ -61,12 +97,10 @@ class _SpaceAppState extends State<SpaceApp> {
 class AppLoader extends StatefulWidget {
   const AppLoader({
     super.key,
-    required this.onToggleTheme,
-    required this.isDark,
+    required this.onOpenSettings,
   });
 
-  final VoidCallback onToggleTheme;
-  final bool isDark;
+  final VoidCallback onOpenSettings;
 
   @override
   State<AppLoader> createState() => _AppLoaderState();
@@ -168,8 +202,7 @@ class _AppLoaderState extends State<AppLoader> {
     return SpaceShell(
       api: _api,
       auth: _auth,
-      onToggleTheme: widget.onToggleTheme,
-      isDark: widget.isDark,
+      onOpenSettings: widget.onOpenSettings,
     );
   }
 }
@@ -181,14 +214,12 @@ class SpaceShell extends StatefulWidget {
     super.key,
     required this.api,
     required this.auth,
-    required this.onToggleTheme,
-    required this.isDark,
+    required this.onOpenSettings,
   });
 
   final ApiService api;
   final AuthService auth;
-  final VoidCallback onToggleTheme;
-  final bool isDark;
+  final VoidCallback onOpenSettings;
 
   @override
   State<SpaceShell> createState() => _SpaceShellState();
@@ -306,8 +337,7 @@ class _SpaceShellState extends State<SpaceShell> {
         onExited: _onGeofenceExit,
         onLeave: _onLeaveSpace,
         onBack: _onBackToDashboard,
-        onToggleTheme: widget.onToggleTheme,
-        isDark: widget.isDark,
+        onOpenSettings: widget.onOpenSettings,
       ),
     };
   }
@@ -327,15 +357,13 @@ class _SpaceShellState extends State<SpaceShell> {
               onCreateSpace: _onCreateSpace,
               onChangeLocation: _onChangeLocation,
               onLogout: _onLogout,
-              onToggleTheme: widget.onToggleTheme,
-              isDark: widget.isDark,
+              onOpenSettings: widget.onOpenSettings,
             )
           : MySpacesScreen(
               api: widget.api,
               onOpenSpace: _onJoinSpace,
               onLeaveActiveSpace: _onLeaveJoinedSpace,
-              onToggleTheme: widget.onToggleTheme,
-              isDark: widget.isDark,
+              onOpenSettings: widget.onOpenSettings,
             ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -492,8 +520,7 @@ class _SpaceShellState extends State<SpaceShell> {
             Navigator.of(context).pop();
             _onJoinSpace(space);
           },
-          onToggleTheme: widget.onToggleTheme,
-          isDark: widget.isDark,
+          onOpenSettings: widget.onOpenSettings,
         ),
       ),
     );
@@ -558,15 +585,13 @@ class _CreateSpaceFlow extends StatelessWidget {
     required this.api,
     required this.userLocation,
     required this.onCreated,
-    required this.onToggleTheme,
-    required this.isDark,
+    required this.onOpenSettings,
   });
 
   final ApiService api;
   final GeoPoint userLocation;
   final ValueChanged<Space> onCreated;
-  final VoidCallback onToggleTheme;
-  final bool isDark;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -574,8 +599,7 @@ class _CreateSpaceFlow extends StatelessWidget {
       api: api,
       initialLocation: userLocation,
       onCreated: onCreated,
-      onToggleTheme: onToggleTheme,
-      isDark: isDark,
+      onOpenSettings: onOpenSettings,
     );
   }
 }
@@ -586,15 +610,13 @@ class CreateSpaceScreen extends StatefulWidget {
     required this.api,
     required this.initialLocation,
     required this.onCreated,
-    this.onToggleTheme,
-    this.isDark = true,
+    this.onOpenSettings,
   });
 
   final ApiService api;
   final GeoPoint initialLocation;
   final ValueChanged<Space> onCreated;
-  final VoidCallback? onToggleTheme;
-  final bool isDark;
+  final VoidCallback? onOpenSettings;
 
   @override
   State<CreateSpaceScreen> createState() => _CreateSpaceScreenState();
@@ -686,17 +708,13 @@ class _CreateSpaceScreenState extends State<CreateSpaceScreen>
                         ),
                       ),
                     ),
-                    if (widget.onToggleTheme != null) ...[
-                      _SpaceIconButton(
-                        icon: Icons.shield_rounded,
-                        onPressed: () => _PrivacyPolicyScreen.show(context),
-                      ),
-                      const SizedBox(width: 8),
-                      _SpaceIconButton(
-                        icon: widget.isDark
-                            ? Icons.light_mode_rounded
-                            : Icons.dark_mode_rounded,
-                        onPressed: widget.onToggleTheme,
+                    if (widget.onOpenSettings != null) ...[
+                      Tooltip(
+                        message: 'Settings',
+                        child: _SpaceIconButton(
+                          icon: Icons.settings_rounded,
+                          onPressed: widget.onOpenSettings,
+                        ),
                       ),
                     ] else
                       const SizedBox(width: 48),
@@ -1007,8 +1025,7 @@ class ChatScreen extends StatefulWidget {
     required this.onExited,
     required this.onLeave,
     this.onBack,
-    this.onToggleTheme,
-    this.isDark = true,
+    this.onOpenSettings,
     this.socket,
   });
 
@@ -1019,8 +1036,7 @@ class ChatScreen extends StatefulWidget {
   final VoidCallback onExited;
   final VoidCallback onLeave;
   final VoidCallback? onBack;
-  final VoidCallback? onToggleTheme;
-  final bool isDark;
+  final VoidCallback? onOpenSettings;
   final ChatSocket? socket;
 
   @override
@@ -1635,17 +1651,13 @@ class ChatScreenState extends State<ChatScreen> {
                         ],
                       ),
                     ),
-                    _SpaceIconButton(
-                      icon: Icons.shield_rounded,
-                      onPressed: () => _PrivacyPolicyScreen.show(context),
-                    ),
-                    const SizedBox(width: 8),
-                    if (widget.onToggleTheme != null) ...[
-                      _SpaceIconButton(
-                        icon: widget.isDark
-                            ? Icons.light_mode_rounded
-                            : Icons.dark_mode_rounded,
-                        onPressed: widget.onToggleTheme,
+                    if (widget.onOpenSettings != null) ...[
+                      Tooltip(
+                        message: 'Settings',
+                        child: _SpaceIconButton(
+                          icon: Icons.settings_rounded,
+                          onPressed: widget.onOpenSettings,
+                        ),
                       ),
                       const SizedBox(width: 8),
                     ],
@@ -1788,8 +1800,7 @@ class SpaceDiscoveryScreen extends StatefulWidget {
     required this.onCreateSpace,
     required this.onChangeLocation,
     required this.onLogout,
-    this.onToggleTheme,
-    this.isDark = true,
+    this.onOpenSettings,
   });
 
   final ApiService api;
@@ -1800,8 +1811,7 @@ class SpaceDiscoveryScreen extends StatefulWidget {
   final VoidCallback onCreateSpace;
   final VoidCallback onChangeLocation;
   final VoidCallback onLogout;
-  final VoidCallback? onToggleTheme;
-  final bool isDark;
+  final VoidCallback? onOpenSettings;
 
   @override
   State<SpaceDiscoveryScreen> createState() => _SpaceDiscoveryScreenState();
@@ -1954,21 +1964,13 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
               centerTitle: 'Space',
               leadingIcon: Icons.language_rounded,
               onLeading: widget.onChangeLocation,
-              trailingIcon: widget.isDark
-                  ? Icons.light_mode_rounded
-                  : Icons.dark_mode_rounded,
-              onTrailing: widget.onToggleTheme,
               trailingActions: [
-                _SpaceIconButton(
-                  icon: Icons.shield_rounded,
-                  onPressed: () => _PrivacyPolicyScreen.show(context),
-                ),
-                const SizedBox(width: 8),
-                _SpaceIconButton(
-                  icon: widget.isDark
-                      ? Icons.light_mode_rounded
-                      : Icons.dark_mode_rounded,
-                  onPressed: widget.onToggleTheme,
+                Tooltip(
+                  message: 'Settings',
+                  child: _SpaceIconButton(
+                    icon: Icons.settings_rounded,
+                    onPressed: widget.onOpenSettings,
+                  ),
                 ),
               ],
             ),
@@ -2228,15 +2230,13 @@ class MySpacesScreen extends StatefulWidget {
     required this.api,
     required this.onOpenSpace,
     this.onLeaveActiveSpace,
-    this.onToggleTheme,
-    this.isDark = true,
+    this.onOpenSettings,
   });
 
   final ApiService api;
   final Future<bool> Function(Space) onOpenSpace;
   final Future<void> Function(String spaceId)? onLeaveActiveSpace;
-  final VoidCallback? onToggleTheme;
-  final bool isDark;
+  final VoidCallback? onOpenSettings;
 
   @override
   State<MySpacesScreen> createState() => _MySpacesScreenState();
@@ -2441,21 +2441,13 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
               centerTitle: 'Space',
               leadingIcon: Icons.refresh_rounded,
               onLeading: _load,
-              trailingIcon: widget.isDark
-                  ? Icons.light_mode_rounded
-                  : Icons.dark_mode_rounded,
-              onTrailing: widget.onToggleTheme,
               trailingActions: [
-                _SpaceIconButton(
-                  icon: Icons.shield_rounded,
-                  onPressed: () => _PrivacyPolicyScreen.show(context),
-                ),
-                const SizedBox(width: 8),
-                _SpaceIconButton(
-                  icon: widget.isDark
-                      ? Icons.light_mode_rounded
-                      : Icons.dark_mode_rounded,
-                  onPressed: widget.onToggleTheme,
+                Tooltip(
+                  message: 'Settings',
+                  child: _SpaceIconButton(
+                    icon: Icons.settings_rounded,
+                    onPressed: widget.onOpenSettings,
+                  ),
                 ),
               ],
             ),
@@ -2613,16 +2605,12 @@ class _SpaceTopBar extends StatelessWidget {
     required this.centerTitle,
     required this.leadingIcon,
     required this.onLeading,
-    required this.trailingIcon,
-    required this.onTrailing,
     this.trailingActions,
   });
 
   final String centerTitle;
   final IconData leadingIcon;
   final VoidCallback? onLeading;
-  final IconData trailingIcon;
-  final VoidCallback? onTrailing;
   final List<Widget>? trailingActions;
 
   @override
@@ -2651,9 +2639,117 @@ class _SpaceTopBar extends StatelessWidget {
             ),
           ),
           ...?trailingActions,
-          if (trailingActions == null)
-            _SpaceIconButton(icon: trailingIcon, onPressed: onTrailing),
         ],
+      ),
+    );
+  }
+}
+
+class _SettingsScreen extends StatefulWidget {
+  const _SettingsScreen({
+    required this.initialMode,
+    required this.onThemeModeChanged,
+  });
+
+  final ThemeMode initialMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
+
+  @override
+  State<_SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<_SettingsScreen> {
+  late ThemeMode _mode;
+
+  @override
+  void initState() {
+    super.initState();
+    _mode = widget.initialMode;
+  }
+
+  void _select(ThemeMode mode) {
+    setState(() => _mode = mode);
+    widget.onThemeModeChanged(mode);
+  }
+
+  static const _appearanceOptions = [
+    (ThemeMode.system, 'System', Icons.brightness_auto_rounded),
+    (ThemeMode.light, 'Light', Icons.light_mode_rounded),
+    (ThemeMode.dark, 'Dark', Icons.dark_mode_rounded),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+
+    return SpaceScaffold(
+      child: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: colors.background,
+                border: Border(bottom: BorderSide(color: colors.divider)),
+              ),
+              child: Row(
+                children: [
+                  _SpaceIconButton(
+                    icon: Icons.arrow_back_rounded,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Settings',
+                      textAlign: TextAlign.center,
+                      style: SpaceTypography.headingMedium(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: colors.accent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 40),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+                children: [
+                  _SectionHeader(title: 'Appearance', colors: colors),
+                  for (final option in _appearanceOptions)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(option.$3),
+                      title: Text(option.$2),
+                      selected: _mode == option.$1,
+                      trailing: Icon(
+                        _mode == option.$1
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                      ),
+                      onTap: () => _select(option.$1),
+                    ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(color: colors.divider),
+                  ),
+                  _SectionHeader(title: 'About', colors: colors),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.shield_rounded),
+                    title: const Text('Privacy Policy'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => _PrivacyPolicyScreen.show(context),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
