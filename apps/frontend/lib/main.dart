@@ -264,11 +264,11 @@ class _SpaceShellState extends State<SpaceShell> {
         backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Text(
-          'Left Space Area',
+          'Out of Range',
           style: SpaceTypography.headingMedium(color: colors.primaryText),
         ),
         content: Text(
-          'You have moved outside the Space geofence. You will be removed from this Space.',
+          'You have moved outside the Space geofence. You cannot join this space.',
           style: SpaceTypography.bodyMedium(color: colors.secondaryText),
         ),
         actions: [
@@ -512,11 +512,12 @@ class _SpaceShellState extends State<SpaceShell> {
     if (_activeSpace != null) {
       widget.api.leaveSpace(_activeSpace!.id);
     }
+    _geofenceTimer?.cancel();
     setState(() {
       _activeSpace = null;
       _anonymousName = null;
       _sessionId = null;
-      _screen = AppScreen.discovery;
+      _screen = AppScreen.location;
     });
   }
 
@@ -1241,6 +1242,85 @@ class ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _insertEmoji(String emoji) {
+    final current = _controller.value;
+    final selection = current.selection;
+    final valid =
+        selection.isValid &&
+        selection.start >= 0 &&
+        selection.end >= 0 &&
+        selection.start <= current.text.length &&
+        selection.end <= current.text.length;
+    final start = valid ? selection.start : current.text.length;
+    final end = valid ? selection.end : current.text.length;
+    _controller.value = TextEditingValue(
+      text: current.text.replaceRange(start, end, emoji),
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
+  }
+
+  Future<void> _showEmojiPicker() async {
+    final colors = SpaceColors.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: colors.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                  child: Text(
+                    'Emoji',
+                    style: SpaceTypography.headingSmall(
+                      color: colors.primaryText,
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: Wrap(
+                    spacing: 2,
+                    runSpacing: 2,
+                    children: [
+                      for (final emoji in _composerEmojis)
+                        SizedBox(
+                          width: 42,
+                          height: 42,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () {
+                              _insertEmoji(emoji);
+                              Navigator.pop(sheetContext);
+                            },
+                            child: Center(
+                              child: Text(
+                                emoji,
+                                style: const TextStyle(fontSize: 22),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    _scrollToBottom();
+  }
+
   Future<void> _addReaction(ChatMessage message, String emoji) async {
     try {
       await widget.api.reactToMessage(message.id, widget.sessionId, emoji);
@@ -1612,6 +1692,7 @@ class ChatScreenState extends State<ChatScreen> {
               controller: _controller,
               onSend: _sendMessage,
               onAdd: _showChatOptions,
+              onEmoji: _showEmojiPicker,
               replyingTo: _replyingTo,
               spaceName: widget.space.name,
               onCancelReply: () => setState(() => _replyingTo = null),
@@ -1619,6 +1700,65 @@ class ChatScreenState extends State<ChatScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _InviteCodeDialog extends StatefulWidget {
+  const _InviteCodeDialog();
+
+  @override
+  State<_InviteCodeDialog> createState() => _InviteCodeDialogState();
+}
+
+class _InviteCodeDialogState extends State<_InviteCodeDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SpaceColors.of(context);
+    return AlertDialog(
+      backgroundColor: colors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      title: Text(
+        'Join with Invite',
+        style: SpaceTypography.headingMedium(color: colors.primaryText),
+      ),
+      content: TextField(
+        controller: _controller,
+        textCapitalization: TextCapitalization.characters,
+        style: SpaceTypography.bodyLarge(color: colors.primaryText),
+        decoration: InputDecoration(
+          hintText: 'ABCD1234',
+          hintStyle: SpaceTypography.bodyMedium(color: colors.muted),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            'Cancel',
+            style: TextStyle(color: colors.secondaryText),
+          ),
+        ),
+        FilledButton(
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            Navigator.of(context).pop(_controller.text.trim());
+          },
+          style: FilledButton.styleFrom(
+            backgroundColor: colors.accent,
+            foregroundColor: colors.onPrimary,
+          ),
+          child: const Text('Join'),
+        ),
+      ],
     );
   }
 }
@@ -1710,63 +1850,17 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
   }
 
   Future<void> _showInviteJoinDialog() async {
-    final controller = TextEditingController();
-    final colors = SpaceColors.of(context);
     final code = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: colors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text(
-          'Join with Invite',
-          style: SpaceTypography.headingMedium(color: colors.primaryText),
-        ),
-        content: TextField(
-          controller: controller,
-          textCapitalization: TextCapitalization.characters,
-          style: SpaceTypography.bodyLarge(color: colors.primaryText),
-          decoration: InputDecoration(
-            hintText: 'ABCD1234',
-            hintStyle: SpaceTypography.bodyMedium(color: colors.muted),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: colors.secondaryText),
-            ),
-          ),
-          FilledButton(
-            onPressed: () {
-              FocusScope.of(context).unfocus();
-              Navigator.of(context).pop(controller.text.trim());
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: colors.accent,
-              foregroundColor: colors.onPrimary,
-            ),
-            child: const Text('Join'),
-          ),
-        ],
-      ),
+      builder: (context) => const _InviteCodeDialog(),
     );
-    if (!mounted) {
-      controller.dispose();
-      return;
-    }
 
     final inviteCode = code?.trim() ?? '';
-    if (inviteCode.isEmpty) {
-      controller.dispose();
-      return;
-    }
+    if (inviteCode.isEmpty) return;
 
     setState(() => _joiningInvite = true);
     await WidgetsBinding.instance.endOfFrame;
     await Future<void>.delayed(const Duration(milliseconds: 120));
-    controller.dispose();
     if (!mounted) return;
 
     final ok = await widget.onJoinInvite(inviteCode);
@@ -3102,12 +3196,22 @@ class _PollComposerDialogState extends State<PollComposerDialog> {
   );
 }
 
+const _composerEmojis = <String>[
+  '😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘',
+  '😉', '😎', '🤗', '🤔', '🙄', '😅', '🥳', '😴',
+  '🙂', '😭', '😢', '😡', '🤯', '😱', '🥺', '😇',
+  '👍', '👎', '👏', '🙌', '🤝', '💪', '🙏', '👀',
+  '❤️', '💙', '💚', '💛', '🧡', '💜', '🔥', '✨',
+  '🎉', '🎂', '⚽', '🎮', '🍕', '☕', '🌮', '🚀',
+];
+
 class ChatComposer extends StatelessWidget {
   const ChatComposer({
     super.key,
     required this.controller,
     required this.onSend,
     this.onAdd,
+    this.onEmoji,
     this.replyingTo,
     this.spaceName,
     this.onCancelReply,
@@ -3116,6 +3220,7 @@ class ChatComposer extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final VoidCallback? onAdd;
+  final VoidCallback? onEmoji;
   final ChatMessage? replyingTo;
   final String? spaceName;
   final VoidCallback? onCancelReply;
@@ -3221,10 +3326,20 @@ class ChatComposer extends StatelessWidget {
                               onSubmitted: (_) => onSend(),
                             ),
                           ),
-                          Icon(
-                            Icons.mood_rounded,
-                            size: 21,
-                            color: colors.muted,
+                          IconButton(
+                            tooltip: 'Emoji',
+                            onPressed: onEmoji,
+                            icon: const Icon(
+                              Icons.mood_rounded,
+                              size: 23,
+                            ),
+                            color: colors.secondaryText,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 34,
+                              minHeight: 34,
+                            ),
+                            splashRadius: 18,
                           ),
                         ],
                       ),

@@ -119,6 +119,59 @@ void main() {
     expect(joinedSpaceId, 'space-1');
   });
 
+  testWidgets('join with invite code opens cleanly and hands off the code', (
+    tester,
+  ) async {
+    String? joinCode;
+    final mock = MockClient((request) async {
+      if (request.url.path.contains('/spaces/discover')) {
+        return http.Response(
+          '[]',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('not found', 404);
+    });
+
+    final api = ApiService(ApiClient('http://test', client: mock));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SpaceDiscoveryScreen(
+          api: api,
+          latitude: 12.97,
+          longitude: 77.59,
+          onJoinSpace: (_) async => true,
+          onJoinInvite: (code) async {
+            joinCode = code;
+            return false;
+          },
+          onCreateSpace: () {},
+          onChangeLocation: () {},
+          onLogout: () {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Invite'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Join with Invite'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'ABCD1234');
+    await tester.tap(find.text('Join'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+
+    expect(joinCode, 'ABCD1234');
+    expect(find.text('Join with Invite'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('discovery card fits on narrow Android viewport', (tester) async {
     tester.view.physicalSize = const Size(720, 1600);
     tester.view.devicePixelRatio = 1.875;
@@ -451,6 +504,61 @@ void main() {
 
     expect(replyTo, 'm1');
     expect(find.textContaining('Replying to anon-2'), findsOneWidget);
+
+    await incoming.close();
+  });
+
+  testWidgets('emoji picker inserts the chosen emoji into the message field', (
+    tester,
+  ) async {
+    final incoming = StreamController<WsEvent>.broadcast();
+    final mock = MockClient((request) async {
+      if (request.url.path.endsWith('/messages')) {
+        return http.Response(
+          '[]',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('not found', 404);
+    });
+
+    final api = ApiService(ApiClient('http://test', client: mock));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatScreen(
+          space: Space(
+            id: 'space-1',
+            name: 'Test Space',
+            visibility: 'public',
+            latitude: 12.97,
+            longitude: 77.59,
+            radiusMeters: 100,
+            createdAt: DateTime.utc(2026),
+          ),
+          sessionId: 'session-1',
+          anonymousName: 'anon-me',
+          api: api,
+          onExited: () {},
+          onLeave: () {},
+          socket: _FakeChatSocket(incoming),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Emoji'));
+    await _pumpUi(tester);
+
+    expect(find.text('Emoji'), findsOneWidget);
+
+    await tester.tap(find.text('😎'));
+    await _pumpUi(tester);
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, '😎');
 
     await incoming.close();
   });
