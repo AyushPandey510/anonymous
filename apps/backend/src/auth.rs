@@ -67,6 +67,52 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/auth/refresh", post(refresh))
 }
 
+pub async fn migrate_plaintext_device_ids(pool: &PgPool, secret: &str) -> ApiResult<u64> {
+    let rows = sqlx::query_as::<_, (Uuid, String)>(
+        r#"
+        SELECT id, device_id
+        FROM identity.users
+        WHERE device_id IS NOT NULL
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut migrated = 0;
+    for (id, device_id) in rows {
+        let device_id_hash = hash_lookup(&device_id, secret)?;
+        let result = sqlx::query(
+            r#"
+            UPDATE identity.users
+            SET device_id_hash = CASE
+                    WHEN device_id_hash IS NOT NULL THEN device_id_hash
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM identity.users other
+                        WHERE other.device_id_hash = $2
+                          AND other.id <> $1
+                    ) THEN device_id_hash
+                    ELSE $2
+                END,
+                device_name = CASE
+                    WHEN device_name LIKE 'Space-%' THEN NULL
+                    ELSE device_name
+                END,
+                device_id = NULL
+            WHERE id = $1
+              AND device_id IS NOT NULL
+            "#,
+        )
+        .bind(id)
+        .bind(device_id_hash)
+        .execute(pool)
+        .await?;
+        migrated += result.rows_affected();
+    }
+
+    Ok(migrated)
+}
+
 #[utoipa::path(post, path = "/auth/register", request_body = RegisterRequest)]
 pub async fn register(
     State(state): State<Arc<AppState>>,
@@ -75,30 +121,52 @@ pub async fn register(
     if payload.device_id.trim().is_empty() {
         return Err(ApiError::Validation("device_id is required".to_string()));
     }
+    // Keep the request shape stable, but do not store device names as identifiers.
+    let _device_name = &payload.device_name;
 
-    let existing =
-        sqlx::query_as::<_, (Uuid,)>("SELECT id FROM identity.users WHERE device_id = $1")
-            .bind(&payload.device_id)
-            .fetch_optional(&state.pool)
-            .await?;
+    let device_id_hash = hash_lookup(&payload.device_id, &state.config.jwt_secret)?;
+    let existing = sqlx::query_as::<_, (Uuid,)>(
+        r#"
+        SELECT id
+        FROM identity.users
+        WHERE device_id_hash = $1 OR device_id = $2
+        ORDER BY CASE WHEN device_id_hash = $1 THEN 0 ELSE 1 END
+        LIMIT 1
+        "#,
+    )
+    .bind(&device_id_hash)
+    .bind(&payload.device_id)
+    .fetch_optional(&state.pool)
+    .await?;
 
     let (user_id, is_new) = if let Some((id,)) = existing {
-        sqlx::query("UPDATE identity.users SET last_seen_at = now(), device_name = COALESCE($2, device_name) WHERE id = $1")
-            .bind(id)
-            .bind(&payload.device_name)
-            .execute(&state.pool)
-            .await?;
+        sqlx::query(
+            r#"
+            UPDATE identity.users
+            SET last_seen_at = now(),
+                device_name = CASE
+                    WHEN device_name LIKE 'Space-%' THEN NULL
+                    ELSE device_name
+                END,
+                device_id_hash = $2,
+                device_id = NULL
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .bind(&device_id_hash)
+        .execute(&state.pool)
+        .await?;
         (id, false)
     } else {
         let id = sqlx::query_scalar::<_, Uuid>(
             r#"
-            INSERT INTO identity.users (device_id, device_name)
-            VALUES ($1, $2)
+            INSERT INTO identity.users (device_id_hash)
+            VALUES ($1)
             RETURNING id
             "#,
         )
-        .bind(&payload.device_id)
-        .bind(&payload.device_name)
+        .bind(&device_id_hash)
         .fetch_one(&state.pool)
         .await?;
         (id, true)

@@ -27,7 +27,7 @@ Users are anonymous (device-bound identities only), get access to a "Space" only
 
 ### Features
 
-- **Device auth** — register/login with a `device_id`; issues a JWT access token + hashed refresh token.
+- **Device auth** — register/login with a client `device_id`; backend stores an HMAC hash of it and issues a JWT access token + hashed refresh token.
 - **Spaces** — create public/private geofenced spaces (name, description, location, radius), discover nearby public spaces, join/leave, invite via one-time codes.
 - **Chat** — REST message history + WebSocket realtime fan-out; replies (`reply_to`), emoji reactions, polls with voting, soft-delete of own messages, message reports.
 - **Geofence engine** — server-authoritative location validation pipeline (see below) with an audit log.
@@ -48,6 +48,7 @@ All via environment variables (see `apps/backend/.env.example`):
 | `SESSION_TTL_HOURS` | `2` | Active session lifetime while inside a space |
 | `SESSION_GRACE_SECONDS` | `120` | Grace period after leaving before session expiry |
 | `GEOFENCE_CHECK_INTERVAL_SECONDS` | `30` | Background geofence/session sweep interval |
+| `PRECISE_LOCATION_RETENTION_MINUTES` | `10` | How long exact validation lat/lon is kept before it is anonymized |
 
 ### Run
 
@@ -194,7 +195,7 @@ Two schemas:
 
 | Table | Schema | Purpose |
 |---|---|---|
-| `users` | identity | Device-registered users (`device_id`, `device_name`, `last_seen_at`) |
+| `users` | identity | Device-registered users (`device_id_hash`, legacy nullable `device_id`, `last_seen_at`; device names are not stored for new auth) |
 | `otp_challenges` | identity | Phone OTP challenges (legacy) |
 | `refresh_tokens` | identity | JWT refresh token storage (HMAC-hashed token strings) |
 | `spaces` | activity | Geofenced spaces (name, description, location, radius, visibility) |
@@ -209,7 +210,7 @@ Two schemas:
 
 **ENUM types:** `space_visibility` (public, private), `session_status` (active, grace, expired), `moderation_status` (clean, flagged, hidden), `report_status` (pending, reviewed, actioned, dismissed)
 
-**Migrations:** `0001_init` (base schema) → `0002` (location validation events) → `0003` (extended event columns, index) → `0004` (device auth / users migration) → `0005` (polls) → `0006` (dedupe + unique active-membership guard)
+**Migrations:** `0001_init` (base schema) → `0002` (location validation events) → `0003` (extended event columns, index) → `0004` (device auth / users migration) → `0005` (polls) → `0006` (dedupe + unique active-membership guard) → `0007` (precise location anonymization) → `0008` (hashed device ids)
 
 ### API Endpoints (21 routes)
 
@@ -261,7 +262,7 @@ Two schemas:
 
 ### Auth Flow
 
-1. First launch: client generates a UUID v4 `device_id` → `POST /auth/register` (upserts the user by `device_id`) → returns `user_id`, JWT access token, and an opaque refresh token.
+1. First launch: client generates a UUID v4 `device_id` → `POST /auth/register`; backend upserts by `HMAC-SHA256(secret, device_id)` and does not store the raw id for new users → returns `user_id`, JWT access token, and an opaque refresh token.
 2. Access token: signed HS256 JWT (`sub` = user id, `exp`), TTL configurable (default 60 min).
 3. Refresh token: 64-char random string, stored **hashed** (`HMAC-SHA256(secret, token)`) in `identity.refresh_tokens`.
 4. `POST /auth/refresh` exchanges a valid, unexpired, unrevoked refresh token for a fresh pair.
@@ -280,7 +281,7 @@ Server-authoritative location validation pipeline:
 7. **Hysteresis buffering** — 20m exit buffer, requires 3 consecutive outside readings
 8. **Lifecycle state machine** — Joining → Inside → NearBoundary → GracePeriod → Outside → Expired
 9. **Effective state reporting** — after each validation the real session status is re-read; once grace has elapsed the API returns `expired` / `can_participate: false` so clients auto-exit
-10. **Audit logging** — every event persisted to `location_validation_events` with decision, reason, spoofing score, and JSON metadata
+10. **Privacy-aware audit logging** — every event is logged with decision, reason, spoofing score, and coarse buckets; exact validation lat/lon is kept briefly for smoothing/spoof checks, then cleared by the cleanup worker
 
 **Decision values:** `inside`, `near_boundary`, `outside`, `low_accuracy`, `rejected`
 
@@ -337,7 +338,7 @@ Pure-Rust unit tests (no DB required), ~20 across 8 modules:
 | Location | geolocator (GPS) |
 | HTTP | http package with JWT auto-refresh |
 | Realtime | web_socket_channel |
-| Persistence | SharedPreferences |
+| Persistence | flutter_secure_storage for auth secrets, SharedPreferences for non-sensitive preferences |
 | Geofence | Client-side validation engine matching backend logic |
 
 ### App Loader (Splash)
@@ -439,11 +440,11 @@ Client-side implementation matching the backend's algorithm, used for instant on
 
 ### Authentication & Persistence
 
-1. First launch: generate UUID v4 device ID → `POST /auth/register` → store JWT tokens
-2. Subsequent launches: load from SharedPreferences → reconnect/refresh
+1. First launch: generate UUID v4 device ID → `POST /auth/register`; backend stores only a hash of the device ID → store JWT tokens
+2. Subsequent launches: load auth secrets from platform secure storage → reconnect/refresh
 3. On 401 (any request): auto-refresh via `/auth/refresh` → retry the original request once
 4. Chat socket reads the token fresh on every (re)connect so it uses the latest token
-5. Tokens persisted: `device_id`, `access_token`, `refresh_token`, `user_id`, plus `selected_latitude` / `selected_longitude`
+5. Secure storage persists: `device_id`, `access_token`, `refresh_token`, `user_id`; SharedPreferences keeps non-auth app preferences such as selected latitude/longitude
 
 Base URL selection: `API_BASE_URL` via `--dart-define` wins; otherwise emulator, physical-device, or production constants in `lib/config/app_config.dart`.
 

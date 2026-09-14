@@ -72,6 +72,7 @@ pub async fn validate_location(
             platform: payload.platform.as_deref(),
             app_version: payload.app_version.as_deref(),
             gps_provider: payload.gps_provider.as_deref(),
+            precise_location_retention: precise_location_retention(&state),
         },
     )
     .await?;
@@ -110,6 +111,11 @@ fn session_grace(state: &AppState) -> Duration {
 
 fn session_ttl(state: &AppState) -> Duration {
     Duration::from_std(state.config.session_ttl).unwrap_or_else(|_| Duration::hours(2))
+}
+
+fn precise_location_retention(state: &AppState) -> Duration {
+    Duration::from_std(state.config.precise_location_retention)
+        .unwrap_or_else(|_| Duration::minutes(10))
 }
 
 async fn effective_lifecycle_state<'a>(

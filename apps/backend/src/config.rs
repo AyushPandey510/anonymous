@@ -10,6 +10,7 @@ pub struct Config {
     pub session_ttl: Duration,
     pub session_grace: Duration,
     pub geofence_check_interval: Duration,
+    pub precise_location_retention: Duration,
 }
 
 impl Config {
@@ -28,6 +29,9 @@ impl Config {
                 "GEOFENCE_CHECK_INTERVAL_SECONDS",
                 30,
             )),
+            precise_location_retention: Duration::from_secs(
+                env_u64("PRECISE_LOCATION_RETENTION_MINUTES", 10) * 60,
+            ),
         })
     }
 }

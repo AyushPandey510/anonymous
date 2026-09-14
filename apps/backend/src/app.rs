@@ -100,6 +100,12 @@ async fn expire_stale_sessions(pool: &PgPool) -> Result<(), sqlx::Error> {
         tracing::info!(%expired, "expired grace sessions");
     }
 
+    // Exact GPS points are useful briefly, but should not become a location trail.
+    let anonymized = geofence::repository::anonymize_expired_precise_locations(pool).await?;
+    if anonymized > 0 {
+        tracing::info!(%anonymized, "anonymized expired precise locations");
+    }
+
     Ok(())
 }
 

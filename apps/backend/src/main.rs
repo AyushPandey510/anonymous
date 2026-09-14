@@ -36,6 +36,10 @@ async fn main() -> anyhow::Result<()> {
         .run(&pool)
         .await
         .context("run migrations")?;
+    let migrated_devices = auth::migrate_plaintext_device_ids(&pool, &config.jwt_secret).await?;
+    if migrated_devices > 0 {
+        tracing::info!(%migrated_devices, "hashed legacy device ids");
+    }
 
     let app = build_router(pool, config.clone()).layer(TraceLayer::new_for_http());
     let listener = TcpListener::bind(&config.bind_addr).await?;
