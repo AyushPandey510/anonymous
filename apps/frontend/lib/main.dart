@@ -346,9 +346,7 @@ class _SpaceShellState extends State<SpaceShell> {
           selectedIndex: selectedIndex,
           onDestinationSelected: (index) {
             setState(() {
-              _screen = index == 0
-                  ? AppScreen.discovery
-                  : AppScreen.mySpaces;
+              _screen = index == 0 ? AppScreen.discovery : AppScreen.mySpaces;
             });
           },
           backgroundColor: Colors.transparent,
@@ -359,12 +357,20 @@ class _SpaceShellState extends State<SpaceShell> {
           destinations: [
             NavigationDestination(
               icon: const Icon(Icons.explore_outlined, size: 24),
-              selectedIcon: Icon(Icons.explore_rounded, size: 24, color: colors.accent),
+              selectedIcon: Icon(
+                Icons.explore_rounded,
+                size: 24,
+                color: colors.accent,
+              ),
               label: 'Discovery',
             ),
             NavigationDestination(
               icon: const Icon(Icons.layers_outlined, size: 24),
-              selectedIcon: Icon(Icons.layers_rounded, size: 24, color: colors.accent),
+              selectedIcon: Icon(
+                Icons.layers_rounded,
+                size: 24,
+                color: colors.accent,
+              ),
               label: 'My Spaces',
             ),
           ],
@@ -1675,12 +1681,12 @@ class ChatScreenState extends State<ChatScreen> {
                             ),
                           );
                         }
-                        final message =
-                            _messages[_messages.length - 1 - index];
+                        final message = _messages[_messages.length - 1 - index];
                         return MessageCard(
                           message: message,
                           isMine: message.name == widget.anonymousName,
                           onLongPress: () => _showMessageActions(message),
+                          onSwipeReply: () => _startReply(message),
                           onVote: _pendingVotes.contains(message.id)
                               ? null
                               : (option) => _votePoll(message, option),
@@ -1742,10 +1748,7 @@ class _InviteCodeDialogState extends State<_InviteCodeDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(
-            'Cancel',
-            style: TextStyle(color: colors.secondaryText),
-          ),
+          child: Text('Cancel', style: TextStyle(color: colors.secondaryText)),
         ),
         FilledButton(
           onPressed: () {
@@ -2148,8 +2151,7 @@ class _SpaceDiscoveryScreenState extends State<SpaceDiscoveryScreen> {
                             return TweenAnimationBuilder<double>(
                               tween: Tween(begin: 0.0, end: 1.0),
                               duration: Duration(
-                                milliseconds:
-                                    220 + (index * 45).clamp(0, 320),
+                                milliseconds: 220 + (index * 45).clamp(0, 320),
                               ),
                               builder: (context, value, child) {
                                 return Opacity(
@@ -2511,7 +2513,8 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                             memberCount: space.memberCount,
                             joined: _joinedIds.contains(space.id),
                             owned: _ownedIds.contains(space.id),
-                            loading: _openingId == space.id ||
+                            loading:
+                                _openingId == space.id ||
                                 _leavingId == space.id,
                             onInvite: space.visibility == 'private'
                                 ? () => _showInviteCode(space)
@@ -2544,8 +2547,8 @@ class _MySpacesScreenState extends State<MySpacesScreen> {
                           joined: _joinedIds.contains(space.id),
                           owned: _ownedIds.contains(space.id),
                           compact: true,
-                          loading: _openingId == space.id ||
-                              _leavingId == space.id,
+                          loading:
+                              _openingId == space.id || _leavingId == space.id,
                           onInvite: space.visibility == 'private'
                               ? () => _showInviteCode(space)
                               : null,
@@ -3002,9 +3005,7 @@ class _SpaceCard extends StatelessWidget {
                   body,
                   maxLines: compact ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
-                  style: SpaceTypography.bodySmall(
-                    color: colors.secondaryText,
-                  ),
+                  style: SpaceTypography.bodySmall(color: colors.secondaryText),
                 ),
               ],
               const SizedBox(height: 10),
@@ -3197,12 +3198,54 @@ class _PollComposerDialogState extends State<PollComposerDialog> {
 }
 
 const _composerEmojis = <String>[
-  '😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘',
-  '😉', '😎', '🤗', '🤔', '🙄', '😅', '🥳', '😴',
-  '🙂', '😭', '😢', '😡', '🤯', '😱', '🥺', '😇',
-  '👍', '👎', '👏', '🙌', '🤝', '💪', '🙏', '👀',
-  '❤️', '💙', '💚', '💛', '🧡', '💜', '🔥', '✨',
-  '🎉', '🎂', '⚽', '🎮', '🍕', '☕', '🌮', '🚀',
+  '😀',
+  '😁',
+  '😂',
+  '🤣',
+  '😊',
+  '😍',
+  '🥰',
+  '😘',
+  '😉',
+  '😎',
+  '🤗',
+  '🤔',
+  '🙄',
+  '😅',
+  '🥳',
+  '😴',
+  '🙂',
+  '😭',
+  '😢',
+  '😡',
+  '🤯',
+  '😱',
+  '🥺',
+  '😇',
+  '👍',
+  '👎',
+  '👏',
+  '🙌',
+  '🤝',
+  '💪',
+  '🙏',
+  '👀',
+  '❤️',
+  '💙',
+  '💚',
+  '💛',
+  '🧡',
+  '💜',
+  '🔥',
+  '✨',
+  '🎉',
+  '🎂',
+  '⚽',
+  '🎮',
+  '🍕',
+  '☕',
+  '🌮',
+  '🚀',
 ];
 
 class ChatComposer extends StatelessWidget {
@@ -3251,11 +3294,7 @@ class ChatComposer extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.reply_rounded,
-                        size: 17,
-                        color: colors.accent,
-                      ),
+                      Icon(Icons.reply_rounded, size: 17, color: colors.accent),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -3316,8 +3355,7 @@ class ChatComposer extends StatelessWidget {
                                 color: colors.primaryText,
                               ),
                               decoration: InputDecoration(
-                                hintText:
-                                    'Message ${spaceName ?? 'Space'}...',
+                                hintText: 'Message ${spaceName ?? 'Space'}...',
                                 hintStyle: SpaceTypography.bodyMedium(
                                   color: colors.muted,
                                 ),
@@ -3329,10 +3367,7 @@ class ChatComposer extends StatelessWidget {
                           IconButton(
                             tooltip: 'Emoji',
                             onPressed: onEmoji,
-                            icon: const Icon(
-                              Icons.mood_rounded,
-                              size: 23,
-                            ),
+                            icon: const Icon(Icons.mood_rounded, size: 23),
                             color: colors.secondaryText,
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(
@@ -3372,19 +3407,31 @@ class ChatComposer extends StatelessWidget {
   }
 }
 
-class MessageCard extends StatelessWidget {
+class MessageCard extends StatefulWidget {
   const MessageCard({
     super.key,
     required this.message,
     required this.isMine,
     this.onLongPress,
+    this.onSwipeReply,
     this.onVote,
   });
 
   final ChatMessage message;
   final bool isMine;
   final VoidCallback? onLongPress;
+  final VoidCallback? onSwipeReply;
   final ValueChanged<int>? onVote;
+
+  @override
+  State<MessageCard> createState() => _MessageCardState();
+}
+
+class _MessageCardState extends State<MessageCard> {
+  static const double _replyTriggerDistance = 72;
+  static const double _maxDragDistance = 86;
+  double _dragOffset = 0;
+  bool _replyTriggered = false;
 
   @override
   Widget build(BuildContext context) {
@@ -3392,191 +3439,268 @@ class MessageCard extends StatelessWidget {
     final bubbleRadius = BorderRadius.only(
       topLeft: const Radius.circular(22),
       topRight: const Radius.circular(22),
-      bottomLeft: Radius.circular(isMine ? 22 : 5),
-      bottomRight: Radius.circular(isMine ? 5 : 22),
+      bottomLeft: Radius.circular(widget.isMine ? 22 : 5),
+      bottomRight: Radius.circular(widget.isMine ? 5 : 22),
     );
 
     return LayoutBuilder(
       builder: (context, constraints) {
         return Align(
-          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+          alignment: widget.isMine
+              ? Alignment.centerRight
+              : Alignment.centerLeft,
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.82),
             child: GestureDetector(
-              onLongPress: onLongPress,
+              behavior: HitTestBehavior.translucent,
+              onLongPress: widget.onLongPress,
+              onHorizontalDragUpdate: widget.onSwipeReply == null
+                  ? null
+                  : _handleHorizontalDragUpdate,
+              onHorizontalDragEnd: widget.onSwipeReply == null
+                  ? null
+                  : _handleHorizontalDragEnd,
+              onHorizontalDragCancel: _resetDrag,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: isMine
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
+                child: Stack(
+                  alignment: widget.isMine
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
                   children: [
-                    if (!isMine)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 10, bottom: 6),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              message.name,
-                              style: TextStyle(
-                                color: colors.secondaryText,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
+                    Positioned(
+                      left: widget.isMine ? null : 4,
+                      right: widget.isMine ? 4 : null,
+                      child: AnimatedOpacity(
+                        opacity: (_dragOffset.abs() / _replyTriggerDistance)
+                            .clamp(0.0, 1.0),
+                        duration: const Duration(milliseconds: 80),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: colors.accent.withValues(alpha: 0.16),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.reply_rounded,
+                            color: colors.accent,
+                            size: 20,
+                            textDirection: widget.isMine
+                                ? TextDirection.rtl
+                                : TextDirection.ltr,
+                          ),
+                        ),
+                      ),
+                    ),
+                    AnimatedContainer(
+                      duration: _dragOffset == 0
+                          ? const Duration(milliseconds: 180)
+                          : Duration.zero,
+                      curve: Curves.easeOutCubic,
+                      transform: Matrix4.translationValues(_dragOffset, 0, 0),
+                      child: Column(
+                        crossAxisAlignment: widget.isMine
+                            ? CrossAxisAlignment.end
+                            : CrossAxisAlignment.start,
+                        children: [
+                          if (!widget.isMine)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                left: 10,
+                                bottom: 6,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    widget.message.name,
+                                    style: TextStyle(
+                                      color: colors.secondaryText,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  if (widget.message.createdAt != null) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _formatMessageTime(
+                                        widget.message.createdAt!,
+                                      ),
+                                      style: TextStyle(
+                                        color: colors.muted,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
-                            if (message.createdAt != null) ...[
-                              const SizedBox(width: 8),
-                              Text(
-                                _formatMessageTime(message.createdAt!),
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              borderRadius: bubbleRadius,
+                              color: widget.isMine
+                                  ? colors.primary
+                                  : colors.surface,
+                              border: widget.isMine
+                                  ? null
+                                  : Border.all(color: colors.divider),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (widget.message.replyText != null) ...[
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 10),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: widget.isMine
+                                          ? colors.onPrimary.withValues(
+                                              alpha: 0.12,
+                                            )
+                                          : colors.accent.withValues(
+                                              alpha: 0.08,
+                                            ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: widget.isMine
+                                              ? colors.onPrimary.withValues(
+                                                  alpha: 0.72,
+                                                )
+                                              : colors.accent,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '${widget.message.replyText}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: widget.isMine
+                                            ? colors.onPrimary
+                                            : colors.secondaryText,
+                                        fontSize: 12,
+                                        height: 1.25,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                Text(
+                                  widget.message.text,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    height: 1.38,
+                                    color: widget.isMine
+                                        ? colors.onPrimary
+                                        : colors.primaryText,
+                                  ),
+                                ),
+                                if (widget.message.poll case final poll?) ...[
+                                  const SizedBox(height: 12),
+                                  for (var i = 0; i < poll.options.length; i++)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: OutlinedButton(
+                                        onPressed: widget.onVote == null
+                                            ? null
+                                            : () => widget.onVote!(i),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: widget.isMine
+                                              ? colors.onPrimary
+                                              : colors.primaryText,
+                                          disabledForegroundColor: widget.isMine
+                                              ? colors.onPrimary.withValues(
+                                                  alpha: 0.6,
+                                                )
+                                              : colors.secondaryText,
+                                          side: BorderSide(
+                                            color: widget.isMine
+                                                ? colors.onPrimary.withValues(
+                                                    alpha: 0.40,
+                                                  )
+                                                : colors.divider,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          padding: const EdgeInsets.all(10),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              poll.selected == i
+                                                  ? Icons.radio_button_checked
+                                                  : Icons
+                                                        .radio_button_unchecked,
+                                              size: 18,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(poll.options[i]),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text('${poll.counts[i]}'),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  Text(
+                                    '${poll.total} ${poll.total == 1 ? 'vote' : 'votes'}',
+                                    style: TextStyle(
+                                      color: widget.isMine
+                                          ? colors.onPrimary.withValues(
+                                              alpha: 0.70,
+                                            )
+                                          : colors.secondaryText,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (widget.message.reactions.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                for (final entry
+                                    in widget.message.reactions.entries)
+                                  if (entry.value > 0)
+                                    _SpaceChip(
+                                      label: '${entry.key} ${entry.value}',
+                                      accent: colors.accent,
+                                    ),
+                              ],
+                            ),
+                          ],
+                          if (widget.isMine &&
+                              widget.message.createdAt != null) ...[
+                            const SizedBox(height: 5),
+                            Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: Text(
+                                _formatMessageTime(widget.message.createdAt!),
                                 style: TextStyle(
                                   color: colors.muted,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        borderRadius: bubbleRadius,
-                        color: isMine ? colors.primary : colors.surface,
-                        border: isMine
-                            ? null
-                            : Border.all(color: colors.divider),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (message.replyText != null) ...[
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isMine
-                                    ? colors.onPrimary.withValues(alpha: 0.12)
-                                    : colors.accent.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border(
-                                  left: BorderSide(
-color: isMine
-                                    ? colors.onPrimary.withValues(alpha: 0.72)
-                                    : colors.accent,
-                                width: 2,
-                              ),
-                                ),
-                              ),
-                              child: Text(
-                                '${message.replyText}',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: isMine
-                                      ? colors.onPrimary
-                                      : colors.secondaryText,
-                                  fontSize: 12,
-                                  height: 1.25,
-                                ),
-                              ),
-                            ),
-                          ],
-                          Text(
-                            message.text,
-                            style: TextStyle(
-                              fontSize: 16,
-                              height: 1.38,
-                              color: isMine ? colors.onPrimary : colors.primaryText,
-                            ),
-                          ),
-                          if (message.poll case final poll?) ...[
-                            const SizedBox(height: 12),
-                            for (var i = 0; i < poll.options.length; i++)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: OutlinedButton(
-                                  onPressed: onVote == null
-                                      ? null
-                                      : () => onVote!(i),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: isMine
-                                        ? colors.onPrimary
-                                        : colors.primaryText,
-                                    disabledForegroundColor: isMine
-                                        ? colors.onPrimary.withValues(alpha: 0.6)
-                                        : colors.secondaryText,
-                                    side: BorderSide(
-                                      color: isMine
-                                          ? colors.onPrimary.withValues(alpha: 0.40)
-                                          : colors.divider,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    padding: const EdgeInsets.all(10),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        poll.selected == i
-                                            ? Icons.radio_button_checked
-                                            : Icons.radio_button_unchecked,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text(poll.options[i])),
-                                      const SizedBox(width: 8),
-                                      Text('${poll.counts[i]}'),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            Text(
-                              '${poll.total} ${poll.total == 1 ? 'vote' : 'votes'}',
-                              style: TextStyle(
-                                color: isMine
-                                    ? colors.onPrimary.withValues(alpha: 0.70)
-                                    : colors.secondaryText,
-                              ),
                             ),
                           ],
                         ],
                       ),
                     ),
-                    if (message.reactions.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final entry in message.reactions.entries)
-                            if (entry.value > 0)
-                              _SpaceChip(
-                                label: '${entry.key} ${entry.value}',
-                                accent: colors.accent,
-                              ),
-                        ],
-                      ),
-                    ],
-                    if (isMine && message.createdAt != null) ...[
-                      const SizedBox(height: 5),
-                      Padding(
-                        padding: const EdgeInsets.only(right: 10),
-                        child: Text(
-                          _formatMessageTime(message.createdAt!),
-                          style: TextStyle(
-                            color: colors.muted,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -3585,6 +3709,40 @@ color: isMine
         );
       },
     );
+  }
+
+  void _handleHorizontalDragUpdate(DragUpdateDetails details) {
+    final delta = details.primaryDelta ?? 0;
+    final nextOffset = (_dragOffset + delta).clamp(
+      -_maxDragDistance,
+      _maxDragDistance,
+    );
+
+    // Own messages swipe left, others swipe right, matching their bubble side.
+    final isCorrectDirection = widget.isMine ? nextOffset < 0 : nextOffset > 0;
+    setState(() {
+      _dragOffset = isCorrectDirection ? nextOffset.toDouble() : 0;
+    });
+
+    if (!_replyTriggered && _dragOffset.abs() >= _replyTriggerDistance) {
+      _replyTriggered = true;
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  void _handleHorizontalDragEnd(DragEndDetails details) {
+    if (_dragOffset.abs() >= _replyTriggerDistance) {
+      widget.onSwipeReply?.call();
+    }
+    _resetDrag();
+  }
+
+  void _resetDrag() {
+    if (!mounted) return;
+    setState(() {
+      _dragOffset = 0;
+      _replyTriggered = false;
+    });
   }
 
   String _formatMessageTime(DateTime value) {
