@@ -11,6 +11,7 @@ pub struct Config {
     pub session_grace: Duration,
     pub geofence_check_interval: Duration,
     pub precise_location_retention: Duration,
+    pub cors_allowed_origins: Vec<String>,
 }
 
 impl Config {
@@ -32,6 +33,7 @@ impl Config {
             precise_location_retention: Duration::from_secs(
                 env_u64("PRECISE_LOCATION_RETENTION_MINUTES", 10) * 60,
             ),
+            cors_allowed_origins: env_list("CORS_ALLOWED_ORIGINS"),
         })
     }
 }
@@ -41,4 +43,18 @@ fn env_u64(name: &str, fallback: u64) -> u64 {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(fallback)
+}
+
+fn env_list(name: &str) -> Vec<String> {
+    env::var(name)
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }

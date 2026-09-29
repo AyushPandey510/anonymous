@@ -1,11 +1,15 @@
 use crate::{auth, chat, config::Config, geofence, models, moderation, spaces};
-use axum::{routing::get, Json, Router};
+use axum::{
+    http::{header, HeaderValue, Method},
+    routing::get,
+    Json, Router,
+};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
@@ -51,8 +55,34 @@ pub fn build_router(pool: PgPool, config: Config) -> Router {
         .merge(chat::router())
         .merge(geofence::router())
         .merge(SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
-        .layer(CorsLayer::permissive())
+        .layer(cors_layer(&config.cors_allowed_origins))
         .with_state(state)
+}
+
+fn cors_layer(allowed_origins: &[String]) -> CorsLayer {
+    if allowed_origins.is_empty() {
+        return CorsLayer::permissive();
+    }
+
+    let origins = allowed_origins
+        .iter()
+        .filter_map(|origin| match origin.parse::<HeaderValue>() {
+            Ok(origin) => Some(origin),
+            Err(e) => {
+                tracing::warn!(%origin, %e, "ignoring invalid CORS origin");
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if origins.is_empty() {
+        return CorsLayer::permissive();
+    }
+
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 
 async fn health() -> Json<Value> {
